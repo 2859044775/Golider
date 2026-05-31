@@ -1,15 +1,44 @@
 # Golider
 
-为 AI 时代生成生产可用的 Go 后端工程。
+<p align="center">
+  <strong>为 AI 时代生成生产可用的 Go 后端工程</strong>
+</p>
 
-Golider 不是另一个只会生成 CRUD 目录的模板，而是一个面向真实服务骨架的 Go 工程脚手架：默认带日志、JSON 输入校验、查询参数解析、分页响应、排序筛选、时间范围过滤、基础服务层、应用级依赖装配、仓储抽象、可写资源接口、幂等键处理、资源级冲突校验、资源详情接口、局部更新接口、软删除、审计字段、状态流转校验、配置校验、生命周期装配、就绪摘流、HTTP 服务超时护栏、基础测试和可持续扩展的模块体系。
+<p align="center">
+  <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/version-0.1.0-blue" alt="version"></a>
+  <a href="https://github.com/golider/golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
+  <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
+</p>
+
+---
+
+Golider 不是另一个只会生成 CRUD 目录的模板。它是一个面向**真实服务骨架**的 Go 工程脚手架——默认具备日志、输入校验、查询解析、分页、排序、过滤、仓储抽象、幂等写入、冲突校验、状态流转、软删除、审计字段、配置校验、生命周期、就绪摘流、超时护栏和基础测试。生成即具备生产讨论的基础。
+
+## 目录
+
+- [为什么是 Golider](#为什么是-golider)
+- [快速开始](#快速开始)
+- [生成项目结构](#生成项目结构)
+- [默认接口](#默认接口)
+- [默认工程能力](#默认工程能力)
+- [核心命令](#核心命令)
+- [add 模块](#add-模块)
+- [常见示例](#常见示例)
+- [发布信息](#发布信息)
+- [路线方向](#路线方向)
+
+---
 
 ## 为什么是 Golider
 
-- 默认值偏生产，而不是只生成一个能跑起来的 `main.go`
-- 对 AI 协作友好，工程结构清晰、规则明确、扩展锚点稳定
-- 支持在已有项目上按需追加能力，而不是每次都从头换模板
-- 提供 `doctor`、`doctor fix`、`verify-config` 这类工程治理命令
+| 出发点 | 说明 |
+|--------|------|
+| **默认偏生产** | 不只是能跑起来的 `main.go`，默认就带日志、超时、校验、就绪摘流和错误模型 |
+| **AI 协作友好** | 工程结构清晰、规则明确、扩展锚点稳定，方便你和 AI 一起在上面迭代 |
+| **模块化追加** | 支持在已有项目上 `add` 能力，而不是每次都从头换模板 |
+| **工程治理** | 提供 `doctor`、`doctor fix`、`verify`、`verify-config` 这类诊断与修复命令 |
+
+---
 
 ## 安装
 
@@ -17,107 +46,251 @@ Golider 不是另一个只会生成 CRUD 目录的模板，而是一个面向真
 go install github.com/golider/golider@latest
 ```
 
-如果你正在本地开发 Golider，也可以直接运行：
+本地开发时也可以直接运行：
 
 ```bash
 go run . help
 ```
 
+---
+
 ## 快速开始
 
 ```bash
+# 1. 生成项目
 golider new demo --module github.com/acme/demo
+
+# 2. 进入目录
 cd demo
+
+# 3. 复制环境变量模板
 cp .env.example .env
+
+# 4. 启动服务
 make run
 ```
 
-默认生成的服务会提供：
+终端预览：
 
-- `GET /`
-- `GET /healthz`
-- `GET /readyz`
-- `GET /messages`
-- `POST /messages`
-- `GET /messages/{id}`
-- `PATCH /messages/{id}`
-- `DELETE /messages/{id}`
-- `POST /echo`
+```
+== 项目生成完成 ==
+[完成] 已生成项目 demo
+下一步
+  cd demo
+  go run ./cmd/api
+```
+
+---
+
+## 生成项目结构
+
+```
+demo/
+├── .env.example               # 环境变量模板
+├── .gitignore                  # Git 忽略规则
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # GitHub Actions CI
+├── Dockerfile                  # 容器构建文件
+├── Makefile                    # 常用命令入口
+├── README.md                   # 项目说明
+├── go.mod
+├── cmd/
+│   └── api/
+│       └── main.go             # 服务入口
+└── internal/
+    ├── app/
+    │   ├── app.go              # 生命周期装配
+    │   └── dependencies.go     # 依赖装配
+    ├── config/
+    │   └── config.go           # 配置加载与校验
+    ├── http/
+    │   ├── binding.go          # JSON 输入校验
+    │   ├── binding_test.go
+    │   ├── errors.go           # 统一错误模型
+    │   ├── middleware.go       # 中间件装配
+    │   ├── middleware_test.go
+    │   ├── query.go            # 查询参数解析
+    │   ├── query_test.go
+    │   ├── readiness.go        # 就绪摘流
+    │   ├── requestid.go        # 请求标识
+    │   ├── router.go           # 路由定义
+    │   ├── router_test.go
+    │   └── timeout.go          # 请求超时
+    ├── observability/
+    │   └── logger.go           # 统一日志
+    ├── repository/
+    │   └── message.go          # 内存仓储
+    └── service/
+        └── message.go          # 业务服务层
+```
+
+---
+
+## 默认接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/` | 欢迎页面 |
+| `GET` | `/healthz` | 健康检查 |
+| `GET` | `/readyz` | 就绪检查 |
+| `GET` | `/messages` | 消息列表（支持分页、搜索、排序、状态过滤、时间范围） |
+| `POST` | `/messages` | 创建消息（支持 `Idempotency-Key` 幂等写入） |
+| `GET` | `/messages/{id}` | 消息详情 |
+| `PATCH` | `/messages/{id}` | 局部更新消息（支持状态流转校验） |
+| `DELETE` | `/messages/{id}` | 软删除消息 |
+| `POST` | `/echo` | 请求回显（输入校验示例） |
+
+**分页查询示例：**
+
+```
+GET /messages?page=1&page_size=20&search=hello&status=active&sort_by=created_at&sort_order=desc&created_from=2024-01-01T00:00:00Z
+```
+
+**创建消息示例：**
+
+```bash
+curl -X POST http://localhost:8080/messages \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: a1b2c3d4" \
+  -d '{"title": "Hello World", "content": "Golider is awesome"}'
+```
+
+---
 
 ## 默认工程能力
 
-- 统一日志、请求标识、请求超时、请求日志和 panic recover
-- 统一错误模型，错误响应自动附带 `request_id`
-- 默认提供 JSON 请求解码与输入校验辅助，并带一个可直接复用的 `POST /echo` 示例接口
-- 默认提供列表查询参数解析、统一分页响应、排序筛选、时间范围过滤和一个最小读写服务层示例接口 `GET /messages` / `POST /messages` / `GET /messages/{id}` / `PATCH /messages/{id}` / `DELETE /messages/{id}`
-- 默认创建接口支持 `Idempotency-Key` 幂等写入、重复标题冲突识别和统一 `409` 错误返回
-- 默认更新接口支持资源详情查询、局部更新和状态流转校验，示例规则为消息一旦归档不可回退为激活
-- 默认删除接口采用软删除，并保留 `updated_at`、`archived_at`、`deleted_at` 等审计字段
-- 默认通过仓储接口隔离数据访问，内置内存仓储实现，方便后续切换到数据库
-- 默认通过应用层统一装配依赖，分页默认值由配置驱动
-- 配置加载与显式校验，默认覆盖 `PORT`、`SHUTDOWN_TIMEOUT`、`LOG_LEVEL`、`REQUEST_TIMEOUT` 以及 HTTP 服务级超时配置
-- 生命周期装配层，统一管理启动钩子和停机钩子
-- 真实 `readyz` 状态管理，停机前先摘流再执行优雅停机
-- `http.Server` 默认启用 `ReadHeaderTimeout`、`ReadTimeout`、`WriteTimeout`、`IdleTimeout`
-- 基础 HTTP 回归测试，默认覆盖默认路由、错误响应和超时行为
-- Dockerfile、GitHub Actions、Makefile、`.env.example`
+### 基础层
+| 能力 | 说明 |
+|------|------|
+| 统一日志 | 结构化日志，按级别输出 |
+| 请求标识 | 每个请求自动注入 `X-Request-ID` |
+| 请求超时 | 通过 `REQUEST_TIMEOUT` 配置，默认 5 秒 |
+| Panic Recovery | 自动捕获 panic 并返回统一错误 |
+| 统一错误模型 | `{ "code": "...", "message": "...", "request_id": "..." }` |
+
+### 传输层
+| 能力 | 说明 |
+|------|------|
+| JSON 输入校验 | 必填检查、类型校验、未知字段拒绝、单 JSON 对象约束 |
+| 查询参数解析 | 分页、搜索、状态过滤、排序、时间范围 |
+| 统一分页响应 | `{ "items": [...], "page": 1, "page_size": 10, "total": 100 }` |
+| 幂等写入 | `Idempotency-Key` 同键回放返回已创建资源，不同负载返回 `409` |
+| 冲突校验 | 标题重复 → `409 message_title_conflict` |
+| 状态流转 | 消息从 `active` 可归档到 `archived`，不可回退 |
+
+### 服务层
+| 能力 | 说明 |
+|------|------|
+| 仓储抽象 | 通过 `MessageRepository` 接口隔离数据访问 |
+| 内存仓储 | 默认提供内存实现，可直接切换数据库 |
+| 软删除 | `DELETE` 仅标记 `deleted_at`，不物理删除 |
+| 审计字段 | `updated_at`、`archived_at`、`deleted_at` |
+
+### 基础设施层
+| 能力 | 说明 |
+|------|------|
+| 配置校验 | 端口范围、日志级别、超时合法性、分页默认值合理性 |
+| 生命周期装配 | 启动钩子和停止钩子统一管理 |
+| 就绪摘流 | 停机前先切换到未就绪状态 |
+| HTTP 超时护栏 | `ReadHeaderTimeout`、`ReadTimeout`、`WriteTimeout`、`IdleTimeout` |
+| 基础测试 | 路由测试、中间件测试、输入校验测试、查询解析测试、服务层测试 |
+| 容器化 | Dockerfile + `.dockerignore` |
+| CI | GitHub Actions 自动化构建与测试 |
+
+---
 
 ## 核心命令
 
-- `golider new`：生成最小可运行且带生产默认值的 Go API 工程
-- `golider add`：为现有工程追加模块能力
-- `golider verify`：校验目标工程是否具备 Golider 最小结构
-- `golider verify-config`：校验 `.env.example` 是否完整且值是否合法
-- `golider doctor`：检查目标工程缺少哪些基础文件、能力和配置
-- `golider doctor fix`：自动补齐常见通用能力
-- `golider version`：输出当前 CLI 版本信息
+| 命令 | 功能 |
+|------|------|
+| `golider new` | 生成带生产默认值的 Go API 工程 |
+| `golider add <模块> [目录]` | 为现有工程追加模块能力 |
+| `golider verify [目录]` | 校验目标工程是否具备最小结构 |
+| `golider verify-config [目录]` | 校验 `.env.example` 完整性与值的合法性 |
+| `golider doctor [目录]` | 检查缺少哪些基础文件、能力和配置 |
+| `golider doctor fix [目录]` | 自动补齐常见通用能力 |
+| `golider version` | 输出版本信息 |
+
+---
 
 ## add 模块
 
-当前支持：
+### 基础设施
 
-- `docker`
-- `ci`
-- `gitignore`
-- `worker`
-- `webhook`
-- `auth`
-- `postgres`
-- `request-id`
-- `timeout`
-- `metrics`
-- `rate-limit`
-- `error-model`
-- `cors`
+| 模块 | 说明 |
+|------|------|
+| `docker` | 生成 Dockerfile |
+| `ci` | 生成 GitHub Actions CI 配置 |
+| `gitignore` | 生成 `.gitignore` |
 
-其中比较核心的模块方向：
+### 中间件与传输
 
-- `worker`：生成独立 worker 入口，并接入统一生命周期装配
-- `postgres`：补数据库检查命令、`/db/readyz` 路由和生命周期占位管理器
-- `request-id`、`timeout`、`metrics`、`rate-limit`、`cors`：补中间件链路与对应配置
-- `error-model`：统一错误返回结构，并和 recover 流程打通
+| 模块 | 说明 |
+|------|------|
+| `request-id` | 注入请求标识中间件 |
+| `timeout` | 注入请求超时中间件 |
+| `metrics` | 注入 `/metrics` 路由与计数中间件 |
+| `rate-limit` | 注入限流中间件 |
+| `cors` | 注入跨域中间件 |
+| `error-model` | 统一错误返回结构，接入 recover |
 
-## 常用示例
+### 业务扩展
+
+| 模块 | 说明 |
+|------|------|
+| `auth` | 鉴权示例：`/auth/login` 路由与 `AUTH_TOKEN` 配置 |
+| `webhook` | Webhook 示例：`/webhooks/example` 接收接口 |
+| `postgres` | 数据库检查命令、`/db/readyz` 路由、生命周期管理器 |
+| `worker` | 独立 worker 入口，接入生命周期装配 |
+
+---
+
+## 常见示例
 
 ```bash
+# 查看版本
 golider version
+
+# 生成新项目
 golider new demo --module github.com/acme/demo
+
+# 追加数据库能力
 golider add postgres ./demo
+
+# 追加 worker 能力
 golider add worker ./demo
+
+# 工程结构校验
 golider verify ./demo
+
+# 配置校验
 golider verify-config ./demo
+
+# 诊断缺失能力
 golider doctor ./demo
+
+# 自动修复
 golider doctor fix ./demo
 ```
 
+---
+
 ## 发布信息
 
-- 当前版本：`0.1.0`
-- Go 最低版本：`1.20`
-- 开源协议：`MIT`
+| 项目 | 内容 |
+|------|------|
+| 当前版本 | `0.1.0` |
+| Go 最低版本 | `1.20` |
+| 开源协议 | `MIT` |
+
+---
 
 ## 路线方向
 
-- 继续强化默认工程护栏，让生成结果更接近真实线上服务骨架
-- 持续扩展 `add` 模块，覆盖更多常见后端能力
-- 打磨发布体验，包括版本发布、安装方式和示例项目展示
+- [ ] 继续强化默认工程护栏，让生成结果更接近真实线上服务骨架
+- [ ] 持续扩展 `add` 模块，覆盖更多常见后端能力（Redis、Kafka、gRPC 等）
+- [ ] 增加数据库可切换仓储占位与乐观锁/版本字段
+- [ ] 打磨发布体验，包括版本发布、安装方式和示例项目展示
+- [ ] 生成项目运行日志做分彩级别输出
+- [ ] `doctor` 做成更强的表格感输出，成功项折叠、突出异常项

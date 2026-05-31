@@ -68,31 +68,44 @@ verify:
 
 const projectReadmeTemplate = `# {{ .ProjectTitle }}
 
-由 Golider 生成的最小可运行 Go API 工程，默认包含健康检查、请求标识、请求超时、统一错误模型、JSON 输入校验、查询参数解析、分页响应、基础服务层、仓储抽象、写入接口示例、幂等键处理、资源级冲突校验、资源详情接口、局部更新接口、软删除、审计字段、状态流转校验、配置校验、生命周期钩子、就绪摘流、HTTP 服务超时护栏、基础测试、Dockerfile 和 GitHub Actions。
+由 Golider 生成的 Go API 工程。
 
-## 启动
-
-1. 复制环境变量模板
-2. 执行服务
+## 快速启动
 
 ` + "```bash" + `
 cp .env.example .env
 make run
 ` + "```" + `
 
-## 默认接口
+## 接口
 
-- ` + "`GET /healthz`" + `
-- ` + "`GET /readyz`" + `
-- ` + "`GET /`" + `
-- ` + "`GET /messages`" + `
-- ` + "`POST /messages`" + `
-- ` + "`GET /messages/{id}`" + `
-- ` + "`PATCH /messages/{id}`" + `
-- ` + "`DELETE /messages/{id}`" + `
-- ` + "`POST /echo`" + `
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| ` + "`GET`" + ` | ` + "`/`" + ` | 欢迎 |
+| ` + "`GET`" + ` | ` + "`/healthz`" + ` | 健康检查 |
+| ` + "`GET`" + ` | ` + "`/readyz`" + ` | 就绪检查 |
+| ` + "`GET`" + ` | ` + "`/messages`" + ` | 消息列表（分页、搜索、排序、过滤） |
+| ` + "`POST`" + ` | ` + "`/messages`" + ` | 创建消息（Idempotency-Key 幂等） |
+| ` + "`GET`" + ` | ` + "`/messages/{id}`" + ` | 消息详情 |
+| ` + "`PATCH`" + ` | ` + "`/messages/{id}`" + ` | 局部更新（状态流转） |
+| ` + "`DELETE`" + ` | ` + "`/messages/{id}`" + ` | 软删除 |
+| ` + "`POST`" + ` | ` + "`/echo`" + ` | 请求回显 |
 
-## 默认验证
+` + "```bash" + `
+# 创建消息
+curl -X POST http://localhost:8080/messages \
+  -H "Content-Type: application/json" \
+  -d '{"title":"hello","content":"world"}'
+
+# 查询列表
+curl http://localhost:8080/messages?page=1&page_size=10
+` + "```" + `
+
+## 工程能力
+
+日志 · 请求标识 · 请求超时 · Panic Recovery · 统一错误模型 · JSON 输入校验 · 查询解析 · 分页 · 幂等写入 · 冲突校验 · 状态流转 · 软删除 · 审计字段 · 仓储抽象 · 配置校验 · 生命周期 · 就绪摘流 · HTTP 超时护栏 · Dockerfile · CI
+
+## 验证
 
 ` + "```bash" + `
 make test
