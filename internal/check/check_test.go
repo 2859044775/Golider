@@ -19,6 +19,14 @@ type App struct{}
 func (a *App) OnStart(name string, fn func(context.Context) error) {}
 func (a *App) OnStop(name string, fn func(context.Context) error) {}
 `)
+	writeFile(t, filepath.Join(projectDir, "internal", "app", "dependencies.go"), `package app
+
+type Dependencies struct{}
+
+func newDependencies() {
+	_ = repository.NewInMemoryMessageRepository()
+}
+`)
 	writeFile(t, filepath.Join(projectDir, "internal", "config", "config.go"), `package config
 
 type Config struct{}
@@ -28,6 +36,33 @@ func validate(cfg Config) error { return nil }
 `)
 	writeFile(t, filepath.Join(projectDir, "internal", "observability", "logger.go"), "package observability\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "readiness.go"), "package http\nfunc MarkNotReady(string) {}\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "http", "binding.go"), "package http\nfunc decodeJSON(any, any) error { return nil }\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "http", "query.go"), "package http\nfunc parseListQuery(any, int, int) (any, error) { return nil, nil }\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "service", "message.go"), `package service
+
+type CreateMessageOutput struct {
+	IdempotencyReplay bool
+}
+
+type MessageRepository interface{}
+
+type Message struct {
+	DeletedAt any
+}
+
+func (s *MessageService) GetByID() {}
+func (s *MessageService) Update() {}
+func (s *MessageService) Delete() {}
+func canTransitionMessageStatus() {}
+
+func NewMessageService() any { return nil }
+`)
+	writeFile(t, filepath.Join(projectDir, "internal", "repository", "message.go"), `package repository
+
+type InMemoryMessageRepository struct{}
+
+func NewInMemoryMessageRepository() *InMemoryMessageRepository { return nil }
+`)
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "middleware.go"), `package http
 
 import "net/http"
@@ -57,16 +92,49 @@ func requestLogMiddleware(next http.Handler) http.Handler { return next }
 
 import "net/http"
 
-func NewRouter() http.Handler {
+func NewRouter(deps app.Dependencies) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", nil)
 	mux.HandleFunc("/readyz", nil)
+	mux.HandleFunc("/messages", listMessagesHandler)
+	mux.HandleFunc("/messages/", getMessageHandler)
+	mux.HandleFunc("/echo", echoHandler)
 	mux.HandleFunc("/metrics", metricsHandler)
 	mux.HandleFunc("/auth/login", loginExampleHandler)
 	mux.HandleFunc("/webhooks/example", exampleWebhookHandler)
 	mux.HandleFunc("/db/readyz", postgresReadyHandler)
 	// Golider 路由扩展锚点
 	return withMiddlewares(mux)
+}
+
+func listMessagesHandler(w http.ResponseWriter, r *http.Request) {
+	_, _ = parseListQuery(r, 10, 100)
+	_ = deps.MessageService.List(
+}
+
+func createMessageHandler(w http.ResponseWriter, r *http.Request) {
+	_ = decodeJSON(r, nil)
+	_ = validateCreateMessageRequest(nil, r.Header.Get("Idempotency-Key"))
+	_ = deps.MessageService.Create(
+	_ = "idempotency_key_conflict"
+}
+
+func getMessageHandler(w http.ResponseWriter, r *http.Request) {
+	_ = deps.MessageService.GetByID(
+}
+
+func updateMessageHandler(w http.ResponseWriter, r *http.Request) {
+	_ = deps.MessageService.Update(
+	_ = "message_status_transition_invalid"
+}
+
+func deleteMessageHandler(w http.ResponseWriter, r *http.Request) {
+	_ = deps.MessageService.Delete(
+	_ = `+"`"+`DeletedAt`+"`"+`
+}
+
+func echoHandler(w http.ResponseWriter, r *http.Request) {
+	_ = decodeJSON(r, nil)
 }
 `)
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "errors.go"), "package http\nfunc writeError() {}\n")
@@ -80,12 +148,12 @@ func NewRouter() http.Handler {
 	writeFile(t, filepath.Join(projectDir, "internal", "store", "postgres.go"), "package store\n")
 	writeFile(t, filepath.Join(projectDir, "cmd", "worker", "main.go"), "package main\n")
 	writeFile(t, filepath.Join(projectDir, "cmd", "dbcheck", "main.go"), "package main\n")
-	writeFile(t, filepath.Join(projectDir, ".env.example"), "REQUEST_TIMEOUT=5s\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\n")
+	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=8080\nSHUTDOWN_TIMEOUT=10s\nLOG_LEVEL=info\nREQUEST_TIMEOUT=5s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\n")
 	writeFile(t, filepath.Join(projectDir, ".gitignore"), "bin/\n")
 	writeFile(t, filepath.Join(projectDir, "Dockerfile"), "FROM golang:1.20\n")
 	writeFile(t, filepath.Join(projectDir, ".github", "workflows", "ci.yml"), "name: ci\n")
 	writeFile(t, filepath.Join(projectDir, "Makefile"), "run-worker:\n\tgo run ./cmd/worker\n\ndb-check:\n\tgo run ./cmd/dbcheck\n")
-	writeFile(t, filepath.Join(projectDir, "cmd", "api", "main.go"), "package main\n\nfunc main() { lifecycle.OnStop(\"http-server\", nil); MarkNotReady(\"shutting_down\") }\n")
+	writeFile(t, filepath.Join(projectDir, "cmd", "api", "main.go"), "package main\n\nfunc main() {\n\tlifecycle.OnStop(\"http-server\", nil)\n\tMarkNotReady(\"shutting_down\")\n\t_ = `ReadHeaderTimeout: cfg.ReadHeaderTimeout`\n\t_ = `WriteTimeout:      cfg.WriteTimeout`\n\t_ = `deps := app.NewDependencies(cfg)`\n\t_ = `httptransport.NewRouter(deps)`\n}\n")
 
 	capabilities := Capabilities(projectDir)
 	if len(capabilities) == 0 {
@@ -101,7 +169,7 @@ func NewRouter() http.Handler {
 
 func TestMissingOrInvalidConfig(t *testing.T) {
 	projectDir := t.TempDir()
-	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=70000\nSHUTDOWN_TIMEOUT=0s\nLOG_LEVEL=verbose\nREQUEST_TIMEOUT=1s\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\nDATABASE_TIMEOUT=3s\n")
+	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=70000\nSHUTDOWN_TIMEOUT=0s\nLOG_LEVEL=verbose\nREQUEST_TIMEOUT=1s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\nDATABASE_TIMEOUT=3s\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "middleware.go"), `package http
 
 import "net/http"

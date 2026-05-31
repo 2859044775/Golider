@@ -2,7 +2,7 @@
 
 为 AI 时代生成生产可用的 Go 后端工程。
 
-Golider 不是另一个只会生成 CRUD 目录的模板，而是一个面向真实服务骨架的 Go 工程脚手架：默认带日志、配置校验、生命周期装配、就绪摘流、基础测试和可持续扩展的模块体系。
+Golider 不是另一个只会生成 CRUD 目录的模板，而是一个面向真实服务骨架的 Go 工程脚手架：默认带日志、JSON 输入校验、查询参数解析、分页响应、排序筛选、时间范围过滤、基础服务层、应用级依赖装配、仓储抽象、可写资源接口、幂等键处理、资源级冲突校验、资源详情接口、局部更新接口、软删除、审计字段、状态流转校验、配置校验、生命周期装配、就绪摘流、HTTP 服务超时护栏、基础测试和可持续扩展的模块体系。
 
 ## 为什么是 Golider
 
@@ -37,14 +37,28 @@ make run
 - `GET /`
 - `GET /healthz`
 - `GET /readyz`
+- `GET /messages`
+- `POST /messages`
+- `GET /messages/{id}`
+- `PATCH /messages/{id}`
+- `DELETE /messages/{id}`
+- `POST /echo`
 
 ## 默认工程能力
 
 - 统一日志、请求标识、请求超时、请求日志和 panic recover
 - 统一错误模型，错误响应自动附带 `request_id`
-- 配置加载与显式校验，默认覆盖 `PORT`、`SHUTDOWN_TIMEOUT`、`LOG_LEVEL`、`REQUEST_TIMEOUT`
+- 默认提供 JSON 请求解码与输入校验辅助，并带一个可直接复用的 `POST /echo` 示例接口
+- 默认提供列表查询参数解析、统一分页响应、排序筛选、时间范围过滤和一个最小读写服务层示例接口 `GET /messages` / `POST /messages` / `GET /messages/{id}` / `PATCH /messages/{id}` / `DELETE /messages/{id}`
+- 默认创建接口支持 `Idempotency-Key` 幂等写入、重复标题冲突识别和统一 `409` 错误返回
+- 默认更新接口支持资源详情查询、局部更新和状态流转校验，示例规则为消息一旦归档不可回退为激活
+- 默认删除接口采用软删除，并保留 `updated_at`、`archived_at`、`deleted_at` 等审计字段
+- 默认通过仓储接口隔离数据访问，内置内存仓储实现，方便后续切换到数据库
+- 默认通过应用层统一装配依赖，分页默认值由配置驱动
+- 配置加载与显式校验，默认覆盖 `PORT`、`SHUTDOWN_TIMEOUT`、`LOG_LEVEL`、`REQUEST_TIMEOUT` 以及 HTTP 服务级超时配置
 - 生命周期装配层，统一管理启动钩子和停机钩子
 - 真实 `readyz` 状态管理，停机前先摘流再执行优雅停机
+- `http.Server` 默认启用 `ReadHeaderTimeout`、`ReadTimeout`、`WriteTimeout`、`IdleTimeout`
 - 基础 HTTP 回归测试，默认覆盖默认路由、错误响应和超时行为
 - Dockerfile、GitHub Actions、Makefile、`.env.example`
 

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -31,8 +32,10 @@ func runAdd(args []string) error {
 		return err
 	}
 
-	fmt.Printf("已添加模块 %s\n", parsed.ModuleName)
-	fmt.Printf("目标目录：%s\n", targetDir)
+	ui := newTerminalUI(os.Stdout)
+	ui.Header("模块添加完成")
+	ui.Success("已添加模块 " + parsed.ModuleName)
+	ui.KeyValue("目标目录", targetDir)
 	return nil
 }
 

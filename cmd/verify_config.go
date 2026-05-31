@@ -3,6 +3,7 @@ package cmd
 import (
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/golider/golider/internal/check"
@@ -19,13 +20,19 @@ func runVerifyConfig(args []string) error {
 		projectDir = filepath.Clean(fs.Arg(0))
 	}
 
+	ui := newTerminalUI(os.Stdout)
+	ui.Header("Golider 配置校验")
+	ui.KeyValue("目标目录", projectDir)
+
 	items := check.ConfigRequirements(projectDir)
 	if len(items) == 0 {
-		fmt.Println("未识别到需要校验的配置项，请先确认目标工程包含 .env.example。")
+		ui.Blank()
+		ui.Warning("未识别到需要校验的配置项，请先确认目标工程包含 .env.example。")
 		return nil
 	}
 
-	fmt.Println("Golider 配置校验结果：")
+	ui.Blank()
+	ui.Section("配置项")
 	for _, item := range items {
 		status := "正常"
 		switch {
@@ -36,18 +43,20 @@ func runVerifyConfig(args []string) error {
 		}
 
 		if item.Value != "" {
-			fmt.Printf("- [%s] %s：%s（当前值：%s）\n", status, item.Name, item.Detail, item.Value)
+			ui.StatusLine(status, item.Name+"："+item.Detail+"（当前值："+item.Value+"）")
 			continue
 		}
-		fmt.Printf("- [%s] %s：%s\n", status, item.Name, item.Detail)
+		ui.StatusLine(status, item.Name+"："+item.Detail)
 	}
 
 	invalid := check.MissingOrInvalidConfig(projectDir)
 	if len(invalid) == 0 {
-		fmt.Println("结论：配置模板完整且值有效。")
+		ui.Blank()
+		ui.Success("结论：配置模板完整且值有效。")
 		return nil
 	}
 
-	fmt.Printf("结论：发现 %d 项配置缺失或不合法。\n", len(invalid))
+	ui.Blank()
+	ui.Failure(fmt.Sprintf("结论：发现 %d 项配置缺失或不合法。", len(invalid)))
 	return fmt.Errorf("目标工程配置模板校验未通过")
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -35,10 +36,12 @@ func runNew(args []string) error {
 		return err
 	}
 
-	fmt.Printf("已生成项目 %s\n", opts.AppName)
-	fmt.Printf("下一步：\n")
-	fmt.Printf("  cd %s\n", targetDir)
-	fmt.Printf("  go run ./cmd/api\n")
+	ui := newTerminalUI(os.Stdout)
+	ui.Header("项目生成完成")
+	ui.Success("已生成项目 " + opts.AppName)
+	ui.Section("下一步")
+	ui.KeyValue("进入目录", "cd "+targetDir)
+	ui.KeyValue("启动服务", "go run ./cmd/api")
 	return nil
 }
 

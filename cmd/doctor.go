@@ -25,30 +25,35 @@ func runDoctor(args []string) error {
 		projectDir = filepath.Clean(fs.Arg(0))
 	}
 
+	ui := newTerminalUI(os.Stdout)
 	items := check.RequiredItems(projectDir)
-	fmt.Println("Golider 工程检查结果：")
-	fmt.Println("基础文件：")
+	ui.Header("Golider 工程检查结果")
+	ui.KeyValue("目标目录", projectDir)
+	ui.Blank()
+	ui.Section("基础文件")
 	for _, item := range items {
 		status := "缺失"
 		if item.Exists {
 			status = "正常"
 		}
-		fmt.Printf("- [%s] %s (%s)\n", status, item.Name, item.Path)
+		ui.StatusLine(status, item.Name+" ("+item.Path+")")
 	}
 
-	fmt.Println("能力检查：")
+	ui.Blank()
+	ui.Section("能力检查")
 	capabilities := check.Capabilities(projectDir)
 	for _, capability := range capabilities {
 		status := "缺失"
 		if capability.Exists {
 			status = "正常"
 		}
-		fmt.Printf("- [%s] %s：%s (%s)\n", status, capability.Name, capability.Detail, capability.Related)
+		ui.StatusLine(status, capability.Name+"："+capability.Detail+" ("+capability.Related+")")
 	}
 
 	configItems := check.ConfigRequirements(projectDir)
 	if len(configItems) > 0 {
-		fmt.Println("配置检查：")
+		ui.Blank()
+		ui.Section("配置检查")
 		for _, item := range configItems {
 			status := "正常"
 			switch {
@@ -59,10 +64,10 @@ func runDoctor(args []string) error {
 			}
 
 			if item.Value != "" {
-				fmt.Printf("- [%s] %s：%s（当前值：%s）\n", status, item.Name, item.Detail, item.Value)
+				ui.StatusLine(status, item.Name+"："+item.Detail+"（当前值："+item.Value+"）")
 				continue
 			}
-			fmt.Printf("- [%s] %s：%s\n", status, item.Name, item.Detail)
+			ui.StatusLine(status, item.Name+"："+item.Detail)
 		}
 	}
 
@@ -70,11 +75,13 @@ func runDoctor(args []string) error {
 	missingCapabilities := check.MissingCapabilities(projectDir)
 	invalidConfig := check.MissingOrInvalidConfig(projectDir)
 	if len(missing) == 0 && len(missingCapabilities) == 0 && len(invalidConfig) == 0 {
-		fmt.Println("结论：当前工程已经具备首版最小能力。")
+		ui.Blank()
+		ui.Success("结论：当前工程已经具备首版最小能力。")
 		return nil
 	}
 
-	fmt.Printf("结论：当前工程还缺少 %d 项基础文件、%d 项能力，另有 %d 项配置缺失或无效。\n", len(missing), len(missingCapabilities), len(invalidConfig))
+	ui.Blank()
+	ui.Warning(fmt.Sprintf("结论：当前工程还缺少 %d 项基础文件、%d 项能力，另有 %d 项配置缺失或无效。", len(missing), len(missingCapabilities), len(invalidConfig)))
 	return nil
 }
 
@@ -89,30 +96,34 @@ func runDoctorFix(args []string) error {
 		projectDir = filepath.Clean(fs.Arg(0))
 	}
 
+	ui := newTerminalUI(os.Stdout)
 	if err := ensureDoctorFixPrerequisites(projectDir); err != nil {
 		return err
 	}
 
 	modules := modulesForDoctorFix(projectDir)
 	if len(modules) == 0 {
-		fmt.Println("当前工程没有可自动修复的通用能力。")
+		ui.Warning("当前工程没有可自动修复的通用能力。")
 		return runDoctor([]string{projectDir})
 	}
 
-	fmt.Println("Golider 自动修复开始：")
+	ui.Header("Golider 自动修复")
+	ui.KeyValue("目标目录", projectDir)
+	ui.Blank()
 	for _, moduleName := range modules {
 		if err := addon.Install(addon.Options{
 			ModuleName:   moduleName,
 			TargetDir:    projectDir,
 			SkipExisting: true,
 		}); err != nil {
-			fmt.Printf("- [失败] %s：%v\n", moduleName, err)
+			ui.StatusLine("失败", moduleName+"："+err.Error())
 			continue
 		}
-		fmt.Printf("- [完成] %s\n", moduleName)
+		ui.StatusLine("完成", moduleName)
 	}
 
-	fmt.Println("Golider 自动修复完成。")
+	ui.Blank()
+	ui.Success("Golider 自动修复完成。")
 	return runDoctor([]string{projectDir})
 }
 
