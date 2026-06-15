@@ -2472,7 +2472,38 @@ var std = log.New(os.Stdout, "", log.LstdFlags|log.Lmicroseconds)
 var (
 	levelMu      sync.RWMutex
 	currentLevel = "info"
+	isTTY        = isTerminal(os.Stdout)
 )
+
+// levelColor 返回日志级别对应的 ANSI 颜色码。
+func levelColor(level string) string {
+	if !isTTY {
+		return ""
+	}
+	switch level {
+	case "debug":
+		return "\x1b[2;37m"
+	case "info":
+		return "\x1b[1;36m"
+	case "warn":
+		return "\x1b[1;33m"
+	case "error":
+		return "\x1b[1;31m"
+	default:
+		return ""
+	}
+}
+
+func isTerminal(f *os.File) bool {
+	if strings.TrimSpace(os.Getenv("NO_COLOR")) != "" {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
 
 func New(component string) *Logger {
 	return &Logger{component: component}
@@ -2494,6 +2525,10 @@ func (l *Logger) Info(message string, fields ...any) {
 	l.log("info", message, fields...)
 }
 
+func (l *Logger) Warn(message string, fields ...any) {
+	l.log("warn", message, fields...)
+}
+
 func (l *Logger) Error(message string, fields ...any) {
 	l.log("error", message, fields...)
 }
@@ -2502,7 +2537,12 @@ func (l *Logger) log(level string, message string, fields ...any) {
 	if !enabled(level) {
 		return
 	}
-	std.Printf("level=%s component=%s message=%q %s", level, l.component, message, formatFields(fields...))
+	colorCode := levelColor(level)
+	reset := ""
+	if colorCode != "" {
+		reset = "\x1b[0m"
+	}
+	std.Printf("%s%-5s%s component=%-12s message=%q %s", colorCode, level, reset, l.component, message, formatFields(fields...))
 }
 
 func enabled(level string) bool {

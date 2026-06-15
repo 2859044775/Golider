@@ -24,6 +24,16 @@ func runAdd(args []string) error {
 		targetDir = filepath.Clean(parsed.TargetDir)
 	}
 
+	ui := newTerminalUI(os.Stdout)
+	ui.Header("Golider 模块安装")
+	ui.KeyValue("模块", parsed.ModuleName)
+	ui.KeyValue("目标目录", targetDir)
+	if parsed.Force {
+		ui.KeyValue("覆盖模式", "是")
+	}
+	ui.Blank()
+
+	ui.ProgressStep(1, 2, "正在安装模块")
 	if err := addon.Install(addon.Options{
 		ModuleName: parsed.ModuleName,
 		TargetDir:  targetDir,
@@ -31,11 +41,11 @@ func runAdd(args []string) error {
 	}); err != nil {
 		return err
 	}
+	ui.Success("       " + parsed.ModuleName + " 已安装")
+	ui.ProgressStep(2, 2, "安装完成")
 
-	ui := newTerminalUI(os.Stdout)
-	ui.Header("模块添加完成")
-	ui.Success("已添加模块 " + parsed.ModuleName)
-	ui.KeyValue("目标目录", targetDir)
+	ui.Blank()
+	ui.Success("模块 " + parsed.ModuleName + " 添加完成")
 	return nil
 }
 

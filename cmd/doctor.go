@@ -27,61 +27,86 @@ func runDoctor(args []string) error {
 
 	ui := newTerminalUI(os.Stdout)
 	items := check.RequiredItems(projectDir)
+	capabilities := check.Capabilities(projectDir)
+	configItems := check.ConfigRequirements(projectDir)
+
 	ui.Header("Golider 工程检查结果")
 	ui.KeyValue("目标目录", projectDir)
+
+	// 基础文件：正常折叠，异常展开
+	normalFiles := 0
+	abnormalFiles := 0
+	for _, item := range items {
+		if item.Exists {
+			normalFiles++
+		} else {
+			abnormalFiles++
+		}
+	}
 	ui.Blank()
 	ui.Section("基础文件")
+	ui.FoldedSummary(normalFiles, len(items), "项正常")
 	for _, item := range items {
-		status := "缺失"
-		if item.Exists {
-			status = "正常"
+		if !item.Exists {
+			ui.AbnormalItem("缺失", item.Name+" ("+item.Path+")")
 		}
-		ui.StatusLine(status, item.Name+" ("+item.Path+")")
 	}
 
+	// 能力检查：正常折叠，异常展开
+	normalCaps := 0
+	abnormalCaps := 0
+	for _, c := range capabilities {
+		if c.Exists {
+			normalCaps++
+		} else {
+			abnormalCaps++
+		}
+	}
 	ui.Blank()
 	ui.Section("能力检查")
-	capabilities := check.Capabilities(projectDir)
-	for _, capability := range capabilities {
-		status := "缺失"
-		if capability.Exists {
-			status = "正常"
+	ui.FoldedSummary(normalCaps, len(capabilities), "项正常")
+	for _, c := range capabilities {
+		if !c.Exists {
+			ui.AbnormalItem("缺失", c.Name+"："+c.Detail+" ("+c.Related+")")
 		}
-		ui.StatusLine(status, capability.Name+"："+capability.Detail+" ("+capability.Related+")")
 	}
 
-	configItems := check.ConfigRequirements(projectDir)
+	// 配置检查：正常折叠，异常展开
+	normalCfg := 0
+	abnormalCfg := 0
 	if len(configItems) > 0 {
+		for _, item := range configItems {
+			if item.Exists && item.Valid {
+				normalCfg++
+			} else {
+				abnormalCfg++
+			}
+		}
 		ui.Blank()
 		ui.Section("配置检查")
+		ui.FoldedSummary(normalCfg, len(configItems), "项正常")
 		for _, item := range configItems {
-			status := "正常"
-			switch {
-			case !item.Exists:
-				status = "缺失"
-			case !item.Valid:
-				status = "无效"
+			if !item.Exists || !item.Valid {
+				status := "缺失"
+				if item.Exists && !item.Valid {
+					status = "无效"
+				}
+				if item.Value != "" {
+					ui.AbnormalItem(status, item.Name+"："+item.Detail+"（当前值："+item.Value+"）")
+				} else {
+					ui.AbnormalItem(status, item.Name+"："+item.Detail)
+				}
 			}
-
-			if item.Value != "" {
-				ui.StatusLine(status, item.Name+"："+item.Detail+"（当前值："+item.Value+"）")
-				continue
-			}
-			ui.StatusLine(status, item.Name+"："+item.Detail)
 		}
 	}
 
-	missing := check.MissingItems(projectDir)
-	missingCapabilities := check.MissingCapabilities(projectDir)
-	invalidConfig := check.MissingOrInvalidConfig(projectDir)
-	if len(missing) == 0 && len(missingCapabilities) == 0 && len(invalidConfig) == 0 {
-		ui.Blank()
-		ui.Success("结论：当前工程已经具备首版最小能力。")
-		return nil
-	}
+	totalItems := len(items) + len(capabilities) + len(configItems)
+	totalNormal := normalFiles + normalCaps + normalCfg
+	ui.ConclusionSummary(totalNormal, totalItems, abnormalFiles, abnormalCaps, abnormalCfg)
 
-	ui.Blank()
-	ui.Warning(fmt.Sprintf("结论：当前工程还缺少 %d 项基础文件、%d 项能力，另有 %d 项配置缺失或无效。", len(missing), len(missingCapabilities), len(invalidConfig)))
+	if abnormalFiles > 0 || abnormalCaps > 0 || abnormalCfg > 0 {
+		return fmt.Errorf("目标工程存在异常项，请检查或执行 `golider doctor fix`")
+	}
 	return nil
 }
 
@@ -110,21 +135,25 @@ func runDoctorFix(args []string) error {
 	ui.Header("Golider 自动修复")
 	ui.KeyValue("目标目录", projectDir)
 	ui.Blank()
-	for _, moduleName := range modules {
+
+	total := len(modules)
+	for idx, moduleName := range modules {
+		ui.ProgressStep(idx+1, total, "正在安装 "+moduleName)
 		if err := addon.Install(addon.Options{
 			ModuleName:   moduleName,
 			TargetDir:    projectDir,
 			SkipExisting: true,
 		}); err != nil {
-			ui.StatusLine("失败", moduleName+"："+err.Error())
+			ui.Failure("       " + moduleName + "：" + err.Error())
 			continue
 		}
-		ui.StatusLine("完成", moduleName)
+		ui.Success("       " + moduleName)
 	}
 
 	ui.Blank()
 	ui.Success("Golider 自动修复完成。")
-	return runDoctor([]string{projectDir})
+	_ = runDoctor([]string{projectDir})
+	return nil
 }
 
 func modulesForDoctorFix(projectDir string) []string {

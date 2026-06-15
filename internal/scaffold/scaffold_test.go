@@ -310,6 +310,18 @@ func TestCreateProjectIncludesLifecycleAndValidation(t *testing.T) {
 			t.Fatalf("dependencies.go 缺少依赖装配片段 %q: %s", fragment, depsFile)
 		}
 	}
+
+	loggerFile := readFile(t, filepath.Join(projectDir, "internal", "observability", "logger.go"))
+	for _, fragment := range []string{
+		"func (l *Logger) Warn",
+		"func levelColor",
+		"func isTerminal",
+		"isTTY",
+	} {
+		if !strings.Contains(loggerFile, fragment) {
+			t.Fatalf("logger.go 缺少分彩日志片段 %q: %s", fragment, loggerFile)
+		}
+	}
 }
 
 func readFile(t *testing.T, path string) string {

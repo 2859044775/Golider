@@ -24,6 +24,16 @@ func runNew(args []string) error {
 		targetDir = filepath.Clean(opts.AppName)
 	}
 
+	ui := newTerminalUI(os.Stdout)
+	ui.Header("Golider 项目生成")
+	ui.KeyValue("项目名", opts.AppName)
+	ui.KeyValue("模块路径", opts.Module)
+	ui.KeyValue("目标目录", targetDir)
+	ui.KeyValue("默认端口", opts.Port)
+	ui.Blank()
+
+	ui.ProgressStep(1, 4, "初始化目录结构")
+
 	scaffoldOpts := scaffold.Options{
 		AppName:     opts.AppName,
 		Module:      opts.Module,
@@ -36,12 +46,22 @@ func runNew(args []string) error {
 		return err
 	}
 
-	ui := newTerminalUI(os.Stdout)
+	ui.Success("       " + "目录结构已就绪")
+	ui.ProgressStep(2, 4, "写入工程文件")
+	ui.Success("       " + "工程文件已生成（go.mod、Dockerfile、Makefile 等）")
+	ui.ProgressStep(3, 4, "注入默认能力")
+	ui.Success("       " + "默认能力已注入（日志、中间件、路由、仓储、服务层）")
+	ui.ProgressStep(4, 4, "生成完成")
+
+	ui.Blank()
 	ui.Header("项目生成完成")
 	ui.Success("已生成项目 " + opts.AppName)
+	ui.Blank()
 	ui.Section("下一步")
 	ui.KeyValue("进入目录", "cd "+targetDir)
+	ui.KeyValue("复制环境变量", "cp .env.example .env")
 	ui.KeyValue("启动服务", "go run ./cmd/api")
+
 	return nil
 }
 
