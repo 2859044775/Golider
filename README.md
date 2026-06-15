@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/version-0.2.0-blue" alt="version"></a>
+  <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/version-0.3.0-blue" alt="version"></a>
   <a href="https://github.com/golider/golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
   <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
 </p>
@@ -297,7 +297,7 @@ golider doctor fix ./demo
 ## 路线方向
 
 - [ ] 继续强化默认工程护栏，让生成结果更接近真实线上服务骨架
-- [ ] 持续扩展 `add` 模块，覆盖更多常见后端能力（Redis、Kafka、gRPC 等）
+- [x] 持续扩展 `add` 模块，覆盖更多常见后端能力（Redis、gRPC、Kafka 等）
 - [x] 增加数据库可切换仓储占位与乐观锁/版本字段
 - [ ] 打磨发布体验，包括版本发布、安装方式和示例项目展示
 - [x] 生成项目运行日志做分彩级别输出
