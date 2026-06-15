@@ -177,6 +177,7 @@ curl -X POST http://localhost:8080/messages \
 | 统一分页响应 | `{ "items": [...], "page": 1, "page_size": 10, "total": 100 }` |
 | 幂等写入 | `Idempotency-Key` 同键回放返回已创建资源，不同负载返回 `409` |
 | 冲突校验 | 标题重复 → `409 message_title_conflict` |
+| 乐观锁 | 版本号驱动的并发冲突检测，`PATCH`/`DELETE` 可选传入 `version` |
 | 状态流转 | 消息从 `active` 可归档到 `archived`，不可回退 |
 
 ### 服务层

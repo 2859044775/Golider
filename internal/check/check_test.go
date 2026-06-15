@@ -38,31 +38,24 @@ func validate(cfg Config) error { return nil }
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "readiness.go"), "package http\nfunc MarkNotReady(string) {}\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "binding.go"), "package http\nfunc decodeJSON(any, any) error { return nil }\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "query.go"), "package http\nfunc parseListQuery(any, int, int) (any, error) { return nil, nil }\n")
-	writeFile(t, filepath.Join(projectDir, "internal", "service", "message.go"), `package service
+	serviceContent := "package service\n\n" +
+		"type CreateMessageOutput struct {\n\tIdempotencyReplay bool\n}\n\n" +
+		"type MessageRepository interface{}\n\n" +
+		"type Message struct {\n\tDeletedAt any\n\tVersion   int\n}\n\n" +
+		"type MessageVersionConflictError struct {\n\tID             string\n\tExpectedVersion int\n\tActualVersion   int\n}\n\n" +
+		"func (e *MessageVersionConflictError) Error() string { return \"\" }\n\n" +
+		"func (s *MessageService) GetByID() {}\n" +
+		"func (s *MessageService) Update() {}\n" +
+		"func (s *MessageService) Delete() {}\n" +
+		"func canTransitionMessageStatus() {}\n\n" +
+		"func NewMessageService() any { return nil }\n"
+	writeFile(t, filepath.Join(projectDir, "internal", "service", "message.go"), serviceContent)
 
-type CreateMessageOutput struct {
-	IdempotencyReplay bool
-}
-
-type MessageRepository interface{}
-
-type Message struct {
-	DeletedAt any
-}
-
-func (s *MessageService) GetByID() {}
-func (s *MessageService) Update() {}
-func (s *MessageService) Delete() {}
-func canTransitionMessageStatus() {}
-
-func NewMessageService() any { return nil }
-`)
-	writeFile(t, filepath.Join(projectDir, "internal", "repository", "message.go"), `package repository
-
-type InMemoryMessageRepository struct{}
-
-func NewInMemoryMessageRepository() *InMemoryMessageRepository { return nil }
-`)
+	repoContent := "package repository\n\n" +
+		"type InMemoryMessageRepository struct{}\n\n" +
+		"func (r *InMemoryMessageRepository) SaveVersioned() (bool, error) { return true, nil }\n\n" +
+		"func NewInMemoryMessageRepository() *InMemoryMessageRepository { return nil }\n"
+	writeFile(t, filepath.Join(projectDir, "internal", "repository", "message.go"), repoContent)
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "middleware.go"), `package http
 
 import "net/http"
@@ -126,6 +119,7 @@ func getMessageHandler(w http.ResponseWriter, r *http.Request) {
 func updateMessageHandler(w http.ResponseWriter, r *http.Request) {
 	_ = deps.MessageService.Update(
 	_ = "message_status_transition_invalid"
+	_ = "message_version_conflict"
 }
 
 func deleteMessageHandler(w http.ResponseWriter, r *http.Request) {

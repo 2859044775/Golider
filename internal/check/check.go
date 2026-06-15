@@ -247,6 +247,12 @@ func Capabilities(projectDir string) []Capability {
 			Detail:  "包含独立数据库检查命令",
 			Related: "cmd/dbcheck/main.go",
 		},
+		{
+			Name:    "乐观锁版本字段",
+			Exists:  strings.Contains(serviceFile, "Version") && strings.Contains(serviceFile, "MessageVersionConflictError") && strings.Contains(repositoryFile, "SaveVersioned") && strings.Contains(router, "message_version_conflict"),
+			Detail:  "资源更新与删除使用版本号实现乐观锁冲突检测",
+			Related: "internal/service/message.go",
+		},
 	}
 }
 

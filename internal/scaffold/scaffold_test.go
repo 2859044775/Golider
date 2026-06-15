@@ -322,6 +322,30 @@ func TestCreateProjectIncludesLifecycleAndValidation(t *testing.T) {
 			t.Fatalf("logger.go 缺少分彩日志片段 %q: %s", fragment, loggerFile)
 		}
 	}
+
+	repoFile := readFile(t, filepath.Join(projectDir, "internal", "repository", "message.go"))
+	for _, fragment := range []string{
+		"SaveVersioned(ctx context.Context, message service.Message, expectedVersion int)",
+		"item.Version != expectedVersion",
+	} {
+		if !strings.Contains(repoFile, fragment) {
+			t.Fatalf("message.go (repository) 缺少乐观锁片段 %q: %s", fragment, repoFile)
+		}
+	}
+
+	for _, fragment := range []string{
+		"Version    int",
+		"MessageVersionConflictError",
+	} {
+		if !strings.Contains(serviceFile, fragment) {
+			t.Fatalf("message.go (service) 缺少版本冲突片段 %q: %s", fragment, serviceFile)
+		}
+	}
+
+	routerFile2 := readFile(t, filepath.Join(projectDir, "internal", "http", "router.go"))
+	if !strings.Contains(routerFile2, "message_version_conflict") {
+		t.Fatalf("router.go 缺少版本冲突错误码 message_version_conflict: %s", routerFile2)
+	}
 }
 
 func readFile(t *testing.T, path string) string {

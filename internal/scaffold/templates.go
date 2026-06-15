@@ -659,11 +659,23 @@ type updateMessageRequest struct {
 	Title   *string ` + "`json:\"title\"`" + `
 	Content *string ` + "`json:\"content\"`" + `
 	Status  *string ` + "`json:\"status\"`" + `
+	Version *int    ` + "`json:\"version\"`" + `
 }
 
 type echoRequest struct {
 	Name    string ` + "`json:\"name\"`" + `
 	Message string ` + "`json:\"message\"`" + `
+}
+
+type deleteMessageRequest struct {
+	Version *int ` + "`json:\"version\"`" + `
+}
+
+func versionFromPointer(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 func listMessagesHandler(w http.ResponseWriter, r *http.Request, deps app.Dependencies) {
@@ -747,6 +759,7 @@ func updateMessageHandler(w http.ResponseWriter, r *http.Request, deps app.Depen
 		Title:   input.Title,
 		Content: input.Content,
 		Status:  input.Status,
+		Version: versionFromPointer(input.Version),
 	})
 	if err != nil {
 		writeMessageServiceError(w, r, err)
@@ -760,7 +773,20 @@ func updateMessageHandler(w http.ResponseWriter, r *http.Request, deps app.Depen
 }
 
 func deleteMessageHandler(w http.ResponseWriter, r *http.Request, deps app.Dependencies, messageID string) {
-	result, err := deps.MessageService.Delete(context.Background(), messageID)
+	var input deleteMessageRequest
+	// 可选请求体——当请求体非空时解析版本号
+	if r.Body != nil && r.ContentLength > 0 {
+		if err := decodeJSON(r, &input); err != nil {
+			writeBindingError(w, r, err)
+			return
+		}
+	}
+	version := 0
+	if input.Version != nil {
+		version = *input.Version
+	}
+
+	result, err := deps.MessageService.Delete(context.Background(), messageID, version)
 	if err != nil {
 		writeMessageServiceError(w, r, err)
 		return
@@ -850,6 +876,11 @@ func writeMessageServiceError(w http.ResponseWriter, r *http.Request, err error)
 	var transitionConflict *service.MessageStatusTransitionError
 	if errors.As(err, &transitionConflict) {
 		writeError(w, r, http.StatusConflict, "message_status_transition_invalid", "message status transition is not allowed")
+		return
+	}
+	var versionConflict *service.MessageVersionConflictError
+	if errors.As(err, &versionConflict) {
+		writeError(w, r, http.StatusConflict, "message_version_conflict", "message version conflict, the resource has been modified by another request")
 		return
 	}
 	writeError(w, r, http.StatusInternalServerError, "internal_server_error", "internal server error")
@@ -1775,6 +1806,24 @@ func (r *InMemoryMessageRepository) NextID(ctx context.Context) (string, error) 
 	return id, nil
 }
 
+func (r *InMemoryMessageRepository) SaveVersioned(ctx context.Context, message service.Message, expectedVersion int) (bool, error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for idx, item := range r.items {
+		if item.ID == message.ID {
+			if item.Version != expectedVersion {
+				return false, nil
+			}
+			r.items[idx] = message
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func timePointer(value time.Time) *time.Time {
 	return &value
 }
@@ -1836,6 +1885,7 @@ type Message struct {
 	Title      string     ` + "`json:\"title\"`" + `
 	Content    string     ` + "`json:\"content\"`" + `
 	Status     string     ` + "`json:\"status\"`" + `
+	Version    int        ` + "`json:\"version\"`" + `
 	CreatedAt  time.Time  ` + "`json:\"created_at\"`" + `
 	UpdatedAt  *time.Time ` + "`json:\"updated_at,omitempty\"`" + `
 	ArchivedAt *time.Time ` + "`json:\"archived_at,omitempty\"`" + `
@@ -1846,6 +1896,7 @@ type MessageRepository interface {
 	List(context.Context) ([]Message, error)
 	FindByID(context.Context, string) (Message, bool, error)
 	Save(context.Context, Message) error
+	SaveVersioned(context.Context, Message, int) (bool, error)
 	NextID(context.Context) (string, error)
 }
 
@@ -1866,6 +1917,7 @@ type UpdateMessageInput struct {
 	Title   *string
 	Content *string
 	Status  *string
+	Version int
 }
 
 type UpdateMessageOutput struct {
@@ -1925,6 +1977,16 @@ type MessageStatusTransitionError struct {
 
 func (e *MessageStatusTransitionError) Error() string {
 	return "message status transition invalid"
+}
+
+type MessageVersionConflictError struct {
+	ID             string
+	ExpectedVersion int
+	ActualVersion   int
+}
+
+func (e *MessageVersionConflictError) Error() string {
+	return "message version conflict"
 }
 
 type idempotencyRecord struct {
@@ -1989,6 +2051,7 @@ func (s *MessageService) Create(ctx context.Context, input CreateMessageInput) (
 		Title:     title,
 		Content:   content,
 		Status:    status,
+		Version:   1,
 		CreatedAt: time.Now().UTC(),
 	}
 	if status == "archived" {
@@ -2029,6 +2092,14 @@ func (s *MessageService) Update(ctx context.Context, input UpdateMessageInput) (
 		return UpdateMessageOutput{}, err
 	}
 
+	if input.Version > 0 && input.Version != current.Version {
+		return UpdateMessageOutput{}, &MessageVersionConflictError{
+			ID:              input.ID,
+			ExpectedVersion: input.Version,
+			ActualVersion:   current.Version,
+		}
+	}
+
 	next := current
 	if input.Title != nil {
 		next.Title = normalizeMessageTitle(*input.Title)
@@ -2064,16 +2135,26 @@ func (s *MessageService) Update(ctx context.Context, input UpdateMessageInput) (
 		}
 	}
 
+	next.Version++
 	updatedAt := time.Now().UTC()
 	next.UpdatedAt = &updatedAt
-	if err := s.repo.Save(ctx, next); err != nil {
+
+	saved, err := s.repo.SaveVersioned(ctx, next, current.Version)
+	if err != nil {
 		return UpdateMessageOutput{}, err
+	}
+	if !saved {
+		return UpdateMessageOutput{}, &MessageVersionConflictError{
+			ID:              input.ID,
+			ExpectedVersion: input.Version,
+			ActualVersion:   current.Version,
+		}
 	}
 
 	return UpdateMessageOutput{Message: next}, nil
 }
 
-func (s *MessageService) Delete(ctx context.Context, id string) (DeleteMessageOutput, error) {
+func (s *MessageService) Delete(ctx context.Context, id string, version int) (DeleteMessageOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -2082,14 +2163,33 @@ func (s *MessageService) Delete(ctx context.Context, id string) (DeleteMessageOu
 		return DeleteMessageOutput{}, err
 	}
 
-	now := time.Now().UTC()
-	item.UpdatedAt = &now
-	item.DeletedAt = &now
-	if err := s.repo.Save(ctx, item); err != nil {
-		return DeleteMessageOutput{}, err
+	if version > 0 && version != item.Version {
+		return DeleteMessageOutput{}, &MessageVersionConflictError{
+			ID:              id,
+			ExpectedVersion: version,
+			ActualVersion:   item.Version,
+		}
 	}
 
-	return DeleteMessageOutput{Message: item}, nil
+	next := item
+	next.Version++
+	now := time.Now().UTC()
+	next.UpdatedAt = &now
+	next.DeletedAt = &now
+
+	saved, err := s.repo.SaveVersioned(ctx, next, item.Version)
+	if err != nil {
+		return DeleteMessageOutput{}, err
+	}
+	if !saved {
+		return DeleteMessageOutput{}, &MessageVersionConflictError{
+			ID:              id,
+			ExpectedVersion: version,
+			ActualVersion:   item.Version,
+		}
+	}
+
+	return DeleteMessageOutput{Message: next}, nil
 }
 
 func (s *MessageService) List(ctx context.Context, input ListMessagesInput) ListMessagesOutput {
@@ -2222,9 +2322,9 @@ type stubMessageRepository struct {
 func newStubMessageRepository() *stubMessageRepository {
 	return &stubMessageRepository{
 		items: []Message{
-			{ID: "msg_1", Title: "Go service template", Content: "A minimal service layer example", Status: "active", CreatedAt: time.Date(2024, 1, 10, 9, 0, 0, 0, time.UTC)},
-			{ID: "msg_2", Title: "Golider release note", Content: "Production defaults for Go backends", Status: "active", CreatedAt: time.Date(2024, 3, 15, 12, 30, 0, 0, time.UTC)},
-			{ID: "msg_3", Title: "Webhook event", Content: "An incoming event payload", Status: "archived", CreatedAt: time.Date(2023, 11, 20, 8, 15, 0, 0, time.UTC), ArchivedAt: timePointerForTest(time.Date(2023, 12, 1, 8, 15, 0, 0, time.UTC))},
+			{ID: "msg_1", Title: "Go service template", Content: "A minimal service layer example", Status: "active", Version: 1, CreatedAt: time.Date(2024, 1, 10, 9, 0, 0, 0, time.UTC)},
+			{ID: "msg_2", Title: "Golider release note", Content: "Production defaults for Go backends", Status: "active", Version: 1, CreatedAt: time.Date(2024, 3, 15, 12, 30, 0, 0, time.UTC)},
+			{ID: "msg_3", Title: "Webhook event", Content: "An incoming event payload", Status: "archived", Version: 1, CreatedAt: time.Date(2023, 11, 20, 8, 15, 0, 0, time.UTC), ArchivedAt: timePointerForTest(time.Date(2023, 12, 1, 8, 15, 0, 0, time.UTC))},
 		},
 		nextID: 4,
 	}
@@ -2262,6 +2362,20 @@ func (r *stubMessageRepository) NextID(ctx context.Context) (string, error) {
 	id := "msg_" + strconv.Itoa(r.nextID)
 	r.nextID++
 	return id, nil
+}
+
+func (r *stubMessageRepository) SaveVersioned(ctx context.Context, message Message, expectedVersion int) (bool, error) {
+	_ = ctx
+	for idx, item := range r.items {
+		if item.ID == message.ID {
+			if item.Version != expectedVersion {
+				return false, nil
+			}
+			r.items[idx] = message
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func newTestMessageService() *MessageService {
@@ -2388,6 +2502,7 @@ func TestMessageServiceUpdateSuccess(t *testing.T) {
 		Title:   &title,
 		Content: &content,
 		Status:  &status,
+		Version: 1,
 	})
 	if err != nil {
 		t.Fatalf("Update 返回错误: %v", err)
@@ -2403,6 +2518,9 @@ func TestMessageServiceUpdateSuccess(t *testing.T) {
 	}
 	if result.Message.ArchivedAt == nil {
 		t.Fatal("归档后应写入 archived_at")
+	}
+	if result.Message.Version != 2 {
+		t.Fatalf("版本号错误，期望 2，实际 %d", result.Message.Version)
 	}
 }
 
@@ -2441,15 +2559,75 @@ func TestMessageServiceUpdateTransitionConflict(t *testing.T) {
 func TestMessageServiceDeleteSuccess(t *testing.T) {
 	svc := newTestMessageService()
 
-	result, err := svc.Delete(context.Background(), "msg_1")
+	result, err := svc.Delete(context.Background(), "msg_1", 1)
 	if err != nil {
 		t.Fatalf("Delete 返回错误: %v", err)
 	}
 	if result.Message.DeletedAt == nil {
 		t.Fatal("软删除后应写入 deleted_at")
 	}
+	if result.Message.Version != 2 {
+		t.Fatalf("版本号错误，期望 2，实际 %d", result.Message.Version)
+	}
 	if _, err := svc.GetByID(context.Background(), "msg_1"); err == nil {
 		t.Fatal("软删除后不应还能查询到消息")
+	}
+}
+
+func TestMessageServiceDeleteWithoutVersion(t *testing.T) {
+	svc := newTestMessageService()
+
+	result, err := svc.Delete(context.Background(), "msg_1", 0)
+	if err != nil {
+		t.Fatalf("未提供版本号时 Delete 应成功: %v", err)
+	}
+	if result.Message.DeletedAt == nil {
+		t.Fatal("软删除后应写入 deleted_at")
+	}
+}
+
+func TestMessageServiceDeleteVersionConflict(t *testing.T) {
+	svc := newTestMessageService()
+
+	_, err := svc.Delete(context.Background(), "msg_1", 99)
+	if err == nil {
+		t.Fatal("Delete 本应拒绝版本冲突")
+	}
+	if _, ok := err.(*MessageVersionConflictError); !ok {
+		t.Fatalf("错误类型不正确: %T", err)
+	}
+}
+
+func TestMessageServiceUpdateVersionConflict(t *testing.T) {
+	svc := newTestMessageService()
+
+	content := "尝试更新"
+	_, err := svc.Update(context.Background(), UpdateMessageInput{
+		ID:      "msg_1",
+		Content: &content,
+		Version: 99,
+	})
+	if err == nil {
+		t.Fatal("Update 本应拒绝版本冲突")
+	}
+	if _, ok := err.(*MessageVersionConflictError); !ok {
+		t.Fatalf("错误类型不正确: %T", err)
+	}
+}
+
+func TestMessageServiceUpdateWithoutVersion(t *testing.T) {
+	svc := newTestMessageService()
+
+	content := "无版本号更新"
+	result, err := svc.Update(context.Background(), UpdateMessageInput{
+		ID:      "msg_1",
+		Content: &content,
+	})
+	if err != nil {
+		t.Fatalf("未提供版本号时 Update 应成功: %v", err)
+	}
+	if result.Message.Version != 2 {
+		t.Fatalf("版本号错误，期望 2，实际 %d", result.Message.Version)
 	}
 }
 `
