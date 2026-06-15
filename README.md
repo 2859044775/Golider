@@ -1,6 +1,10 @@
 # Golider
 
 <p align="center">
+  <img src="WechatIMG730.jpg" alt="Golider" width="600">
+</p>
+
+<p align="center">
   <strong>为 AI 时代生成生产可用的 Go 后端工程</strong>
 </p>
 
