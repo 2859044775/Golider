@@ -242,7 +242,7 @@ curl -X POST http://localhost:8080/messages \
 |------|------|
 | `auth` | 鉴权示例：`/auth/login` 路由与 `AUTH_TOKEN` 配置 |
 | `webhook` | Webhook 示例：`/webhooks/example` 接收接口 |
-| `postgres` | 数据库检查命令、`/db/readyz` 路由、生命周期管理器 |
+| `postgres` | 数据库检查命令、`/db/readyz` 路由、生命周期管理器、PostgreSQL 仓储实现、数据库迁移模板 |
 | `worker` | 独立 worker 入口，接入生命周期装配 |
 
 ---
@@ -291,7 +291,7 @@ golider doctor fix ./demo
 
 - [ ] 继续强化默认工程护栏，让生成结果更接近真实线上服务骨架
 - [ ] 持续扩展 `add` 模块，覆盖更多常见后端能力（Redis、Kafka、gRPC 等）
-- [ ] 增加数据库可切换仓储占位与乐观锁/版本字段
+- [x] 增加数据库可切换仓储占位与乐观锁/版本字段
 - [ ] 打磨发布体验，包括版本发布、安装方式和示例项目展示
-- [ ] 生成项目运行日志做分彩级别输出
-- [ ] `doctor` 做成更强的表格感输出，成功项折叠、突出异常项
+- [x] 生成项目运行日志做分彩级别输出
+- [x] `doctor` 做成更强的表格感输出，成功项折叠、突出异常项

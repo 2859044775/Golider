@@ -180,6 +180,19 @@ func main() {
 	_ = context.Background()
 }
 `)
+	writeFile(t, filepath.Join(projectDir, "internal", "app", "dependencies.go"), `package app
+
+import (
+	"github.com/acme/demo/internal/config"
+	"github.com/acme/demo/internal/service"
+)
+
+type Dependencies struct {
+	MessageService   *service.MessageService
+	DefaultPageSize int
+	MaxPageSize     int
+}
+`)
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "router.go"), `package http
 
 import (
@@ -246,6 +259,28 @@ func writeJSON(w http.ResponseWriter, statusCode int, data any) {
 		if !strings.Contains(apiMain, fragment) {
 			t.Fatalf("api 入口缺少 postgres 生命周期片段 %q: %s", fragment, apiMain)
 		}
+	}
+
+	depsFile := readFile(t, filepath.Join(projectDir, "internal", "app", "dependencies.go"))
+	if !strings.Contains(depsFile, "Golider 数据库切换位点") {
+		t.Fatalf("dependencies.go 未注入数据库切换位点: %s", depsFile)
+	}
+
+	repoFile := readFile(t, filepath.Join(projectDir, "internal", "repository", "message_postgres.go"))
+	for _, fragment := range []string{
+		"PostgresMessageRepository",
+		"NewDatabaseMessageService",
+		"SaveVersioned",
+		"scanMessage",
+	} {
+		if !strings.Contains(repoFile, fragment) {
+			t.Fatalf("message_postgres.go 缺少片段 %q: %s", fragment, repoFile)
+		}
+	}
+
+	migrationFile := readFile(t, filepath.Join(projectDir, "migrations", "001_create_messages.sql"))
+	if !strings.Contains(migrationFile, "CREATE TABLE IF NOT EXISTS messages") {
+		t.Fatalf("迁移文件未正确生成: %s", migrationFile)
 	}
 }
 

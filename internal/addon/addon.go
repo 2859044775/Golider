@@ -255,7 +255,18 @@ func addPostgresSupport(targetDir string) error {
 		return err
 	}
 
-	return patchPostgresLifecycle(targetDir)
+	if err := patchPostgresLifecycle(targetDir); err != nil {
+		return err
+	}
+
+	return patchPostgresDependencies(targetDir)
+}
+
+func patchPostgresDependencies(targetDir string) error {
+	depsPath := filepath.Join(targetDir, "internal", "app", "dependencies.go")
+	block := "\n// Golider 数据库切换位点：在 main.go 中调用 repository.NewDatabaseMessageService(os.Getenv(\"DATABASE_URL\"))\n" +
+		"// 即可将消息服务从内存仓储切换为 PostgreSQL 仓储，返回的 *sql.DB 需在退出前调用 Close()。\n"
+	return appendToFile(depsPath, block, "postgres 依赖位点")
 }
 
 func addMiddlewareLine(targetDir, line string) error {
@@ -538,5 +549,30 @@ func appendEnvValue(targetDir, line string) error {
 		return fmt.Errorf("写入环境变量模板失败：%w", err)
 	}
 
+	return nil
+}
+
+// appendToFile 向目标文件末尾追加内容块，若内容已存在则跳过。
+func appendToFile(path, block, label string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取 %s 失败：%w", path, err)
+	}
+
+	raw := string(content)
+	if strings.Contains(raw, block) {
+		return nil
+	}
+
+	if !strings.HasSuffix(raw, "\n") {
+		raw += "\n"
+	}
+	raw += block
+
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		return fmt.Errorf("写入 %s 失败：%w", path, err)
+	}
+
+	_ = label
 	return nil
 }

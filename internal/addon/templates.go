@@ -30,10 +30,12 @@ func moduleFiles(name string) map[string]string {
 		}
 	case "postgres":
 		return map[string]string{
-			"cmd/dbcheck/main.go":         postgresCheckMainTemplate,
-			"internal/http/postgres.go":   postgresHTTPTemplate,
-			"internal/store/postgres.go":  postgresStoreTemplate,
-			"internal/store/lifecycle.go": postgresLifecycleTemplate,
+			"cmd/dbcheck/main.go":                     postgresCheckMainTemplate,
+			"internal/http/postgres.go":               postgresHTTPTemplate,
+			"internal/store/postgres.go":              postgresStoreTemplate,
+			"internal/store/lifecycle.go":             postgresLifecycleTemplate,
+			"internal/repository/message_postgres.go": postgresMessageRepositoryTemplate,
+			"migrations/001_create_messages.sql":      migrationTemplate,
 		}
 	case "request-id":
 		return map[string]string{

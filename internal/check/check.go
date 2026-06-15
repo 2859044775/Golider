@@ -77,6 +77,7 @@ func Capabilities(projectDir string) []Capability {
 	serviceFile := readMaybe(filepath.Join(projectDir, "internal", "service", "message.go"))
 	depsFile := readMaybe(filepath.Join(projectDir, "internal", "app", "dependencies.go"))
 	repositoryFile := readMaybe(filepath.Join(projectDir, "internal", "repository", "message.go"))
+	postgresRepoFile := readMaybe(filepath.Join(projectDir, "internal", "repository", "message_postgres.go"))
 
 	return []Capability{
 		{
@@ -252,6 +253,12 @@ func Capabilities(projectDir string) []Capability {
 			Exists:  strings.Contains(serviceFile, "Version") && strings.Contains(serviceFile, "MessageVersionConflictError") && strings.Contains(repositoryFile, "SaveVersioned") && strings.Contains(router, "message_version_conflict"),
 			Detail:  "资源更新与删除使用版本号实现乐观锁冲突检测",
 			Related: "internal/service/message.go",
+		},
+		{
+			Name:    "数据库仓储占位",
+			Exists:  fileExists(filepath.Join(projectDir, "internal", "repository", "message_postgres.go")) && strings.Contains(postgresRepoFile, "NewDatabaseMessageService") && fileExists(filepath.Join(projectDir, "migrations", "001_create_messages.sql")),
+			Detail:  "包含 PostgreSQL 仓储实现和数据库迁移模板",
+			Related: "internal/repository/message_postgres.go",
 		},
 	}
 }

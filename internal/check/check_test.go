@@ -56,6 +56,14 @@ func validate(cfg Config) error { return nil }
 		"func (r *InMemoryMessageRepository) SaveVersioned() (bool, error) { return true, nil }\n\n" +
 		"func NewInMemoryMessageRepository() *InMemoryMessageRepository { return nil }\n"
 	writeFile(t, filepath.Join(projectDir, "internal", "repository", "message.go"), repoContent)
+
+	postgresRepoContent := "package repository\n\n" +
+		"func NewDatabaseMessageService(databaseURL string) (*service.MessageService, *sql.DB, error) {\n" +
+		"\treturn nil, nil, nil\n}\n" +
+		"func NewPostgresMessageRepository(db *sql.DB) *PostgresMessageRepository { return nil }\n"
+	writeFile(t, filepath.Join(projectDir, "internal", "repository", "message_postgres.go"), postgresRepoContent)
+
+	writeFile(t, filepath.Join(projectDir, "migrations", "001_create_messages.sql"), "-- migrations\nCREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY);\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "middleware.go"), `package http
 
 import "net/http"
