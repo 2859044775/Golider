@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/version-0.1.0-blue" alt="version"></a>
+  <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/version-0.2.0-blue" alt="version"></a>
   <a href="https://github.com/golider/golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
   <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
 </p>
