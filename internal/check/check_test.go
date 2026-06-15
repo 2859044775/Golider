@@ -104,6 +104,7 @@ func NewRouter(deps app.Dependencies) http.Handler {
 	mux.HandleFunc("/auth/login", loginExampleHandler)
 	mux.HandleFunc("/webhooks/example", exampleWebhookHandler)
 	mux.HandleFunc("/db/readyz", postgresReadyHandler)
+	mux.HandleFunc("/redis/readyz", redisReadyHandler)
 	// Golider 路由扩展锚点
 	return withMiddlewares(mux)
 }
@@ -148,13 +149,17 @@ func echoHandler(w http.ResponseWriter, r *http.Request) {
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "auth.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "webhook.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "store", "postgres.go"), "package store\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "store", "redis.go"), "package store\nfunc CheckRedis() error { return nil }\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "http", "redis.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "cmd", "worker", "main.go"), "package main\n")
 	writeFile(t, filepath.Join(projectDir, "cmd", "dbcheck", "main.go"), "package main\n")
-	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=8080\nSHUTDOWN_TIMEOUT=10s\nLOG_LEVEL=info\nREQUEST_TIMEOUT=5s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\n")
+	writeFile(t, filepath.Join(projectDir, "cmd", "grpc", "main.go"), "package main\n")
+	writeFile(t, filepath.Join(projectDir, "cmd", "kafka", "main.go"), "package main\n")
+	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=8080\nSHUTDOWN_TIMEOUT=10s\nLOG_LEVEL=info\nREQUEST_TIMEOUT=5s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\nREDIS_URL=redis://localhost:6379\nGRPC_PORT=50051\nKAFKA_BROKERS=localhost:9092\nKAFKA_TOPIC=app-events\n")
 	writeFile(t, filepath.Join(projectDir, ".gitignore"), "bin/\n")
 	writeFile(t, filepath.Join(projectDir, "Dockerfile"), "FROM golang:1.20\n")
 	writeFile(t, filepath.Join(projectDir, ".github", "workflows", "ci.yml"), "name: ci\n")
-	writeFile(t, filepath.Join(projectDir, "Makefile"), "run-worker:\n\tgo run ./cmd/worker\n\ndb-check:\n\tgo run ./cmd/dbcheck\n")
+	writeFile(t, filepath.Join(projectDir, "Makefile"), "run-worker:\n\tgo run ./cmd/worker\n\ndb-check:\n\tgo run ./cmd/dbcheck\n\nrun-grpc:\n\tgo run ./cmd/grpc\n\nrun-kafka:\n\tgo run ./cmd/kafka\n")
 	writeFile(t, filepath.Join(projectDir, "cmd", "api", "main.go"), "package main\n\nfunc main() {\n\tlifecycle.OnStop(\"http-server\", nil)\n\tMarkNotReady(\"shutting_down\")\n\t_ = `ReadHeaderTimeout: cfg.ReadHeaderTimeout`\n\t_ = `WriteTimeout:      cfg.WriteTimeout`\n\t_ = `deps := app.NewDependencies(cfg)`\n\t_ = `httptransport.NewRouter(deps)`\n}\n")
 
 	capabilities := Capabilities(projectDir)

@@ -61,6 +61,25 @@ func moduleFiles(name string) map[string]string {
 		return map[string]string{
 			"internal/http/cors.go": corsTemplate,
 		}
+	case "redis":
+		return map[string]string{
+			"internal/store/redis.go":  redisStoreTemplate,
+			"internal/http/redis.go":   redisHTTPTemplate,
+		}
+	case "grpc":
+		return map[string]string{
+			"proto/service.proto":        grpcProtoTemplate,
+			"cmd/grpc/main.go":           grpcMainTemplate,
+			"internal/grpc/server.go":    grpcServerTemplate,
+			"internal/grpc/service.go":   grpcServiceTemplate,
+		}
+	case "kafka":
+		return map[string]string{
+			"cmd/kafka/main.go":            kafkaMainTemplate,
+			"internal/kafka/consumer.go":   kafkaConsumerTemplate,
+			"internal/kafka/producer.go":   kafkaProducerTemplate,
+			"internal/kafka/lifecycle.go":  kafkaLifecycleTemplate,
+		}
 	default:
 		return map[string]string{}
 	}
@@ -68,13 +87,13 @@ func moduleFiles(name string) map[string]string {
 
 func baseFiles(name string) map[string]string {
 	switch name {
-	case "worker", "postgres":
+	case "worker", "postgres", "grpc", "kafka":
 		return map[string]string{
 			"internal/observability/logger.go": addonLoggerTemplate,
 			"internal/config/config.go":        addonConfigTemplate,
 			"internal/app/app.go":              addonAppTemplate,
 		}
-	case "webhook", "auth", "metrics", "rate-limit", "cors":
+	case "webhook", "auth", "metrics", "rate-limit", "cors", "redis":
 		return map[string]string{
 			"internal/observability/logger.go": addonLoggerTemplate,
 		}
@@ -977,4 +996,486 @@ func formatFields(fields ...any) string {
 
 	return strings.Join(parts, " ")
 }
+`
+
+const redisStoreTemplate = `package store
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/url"
+	"strings"
+
+	"{{ .ModulePath }}/internal/observability"
+)
+
+var redisLifecycleLogger = observability.New("redis-lifecycle")
+
+type RedisManager struct {
+	redisURL string
+}
+
+func NewRedisManager(redisURL string) *RedisManager {
+	return &RedisManager{redisURL: redisURL}
+}
+
+func (m *RedisManager) Start(context.Context) error {
+	if strings.TrimSpace(m.redisURL) == "" {
+		return fmt.Errorf("REDIS_URL 不能为空")
+	}
+
+	parsed, err := url.Parse(m.redisURL)
+	if err != nil {
+		return fmt.Errorf("解析 REDIS_URL 失败：%w", err)
+	}
+
+	redisLifecycleLogger.Info("Redis 生命周期已接入", "host", parsed.Hostname())
+	return nil
+}
+
+func (m *RedisManager) Stop(context.Context) error {
+	redisLifecycleLogger.Info("Redis 生命周期已停止")
+	return nil
+}
+
+func CheckRedis(ctx context.Context, redisURL string) error {
+	if strings.TrimSpace(redisURL) == "" {
+		return fmt.Errorf("REDIS_URL 不能为空")
+	}
+
+	parsed, err := url.Parse(redisURL)
+	if err != nil {
+		return fmt.Errorf("解析 REDIS_URL 失败：%w", err)
+	}
+
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("REDIS_URL 缺少主机名")
+	}
+
+	port := parsed.Port()
+	if port == "" {
+		port = "6379"
+	}
+
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
+	if err != nil {
+		return fmt.Errorf("连接 Redis 地址失败：%w", err)
+	}
+	defer conn.Close()
+
+	return nil
+}
+`
+
+const redisHTTPTemplate = `package http
+
+import (
+	"context"
+	"net/http"
+	"os"
+	"time"
+
+	"{{ .ModulePath }}/internal/observability"
+	"{{ .ModulePath }}/internal/store"
+)
+
+var redisLogger = observability.New("redis")
+
+func redisReadyHandler(w http.ResponseWriter, r *http.Request) {
+	timeout := 3 * time.Second
+	if raw := os.Getenv("DATABASE_TIMEOUT"); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil {
+			timeout = parsed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+
+	if err := store.CheckRedis(ctx, os.Getenv("REDIS_URL")); err != nil {
+		redisLogger.Error("Redis 检查失败", "error", err.Error())
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable", "error": err.Error()})
+		return
+	}
+
+	redisLogger.Info("Redis 检查通过")
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+`
+
+const grpcProtoTemplate = `syntax = "proto3";
+
+package {{ .ProjectName }};
+
+option go_package = "{{ .ModulePath }}/proto";
+
+service Greeter {
+  rpc SayHello (HelloRequest) returns (HelloReply) {}
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckReply) {}
+}
+
+message HelloRequest {
+  string name = 1;
+}
+
+message HelloReply {
+  string message = 1;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckReply {
+  string status = 1;
+}
+`
+
+const grpcMainTemplate = `package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"{{ .ModulePath }}/internal/app"
+	"{{ .ModulePath }}/internal/config"
+	"{{ .ModulePath }}/internal/grpc"
+	"{{ .ModulePath }}/internal/observability"
+)
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "配置加载失败：%v\n", err)
+		os.Exit(1)
+	}
+
+	observability.SetLevel(cfg.LogLevel)
+	logger := observability.New("grpc-server")
+
+	grpcPort := os.Getenv("GRPC_PORT")
+	if grpcPort == "" {
+		grpcPort = "50051"
+	}
+
+	server := grpc.NewServer("{{ .ProjectName }}", grpcPort)
+	lifecycle := app.New()
+	lifecycle.OnStart("grpc", server.StartHook())
+	lifecycle.OnStop("grpc", server.StopHook())
+
+	if err := lifecycle.Start(context.Background()); err != nil {
+		logger.Error("gRPC 服务启动失败", "error", err.Error())
+		os.Exit(1)
+	}
+
+	logger.Info("gRPC 服务已启动", "port", grpcPort)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+
+	if err := lifecycle.Stop(ctx); err != nil {
+		logger.Error("gRPC 服务停止失败", "error", err.Error())
+		os.Exit(1)
+	}
+
+	logger.Info("gRPC 服务已停止")
+}
+`
+
+const grpcServerTemplate = `package grpc
+
+import (
+	"context"
+	"fmt"
+	"net"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
+	"{{ .ModulePath }}/internal/observability"
+)
+
+var grpcLogger = observability.New("grpc")
+
+type Server struct {
+	name string
+	port string
+	srv  *grpc.Server
+}
+
+func NewServer(name, port string) *Server {
+	srv := grpc.NewServer()
+
+	// 注册示例服务
+	RegisterGreeterServer(srv, &greeterService{})
+
+	// 注册 gRPC 反射服务，方便调试
+	reflection.Register(srv)
+
+	return &Server{
+		name: name,
+		port: port,
+		srv:  srv,
+	}
+}
+
+func (s *Server) StartHook() func(context.Context) error {
+	return func(context.Context) error {
+		lis, err := net.Listen("tcp", ":"+s.port)
+		if err != nil {
+			return fmt.Errorf("gRPC 监听端口 %s 失败：%w", s.port, err)
+		}
+
+		grpcLogger.Info("gRPC 服务开始监听", "port", s.port, "name", s.name)
+		go func() {
+			if err := s.srv.Serve(lis); err != nil {
+				grpcLogger.Error("gRPC 服务异常退出", "error", err.Error())
+			}
+		}()
+
+		return nil
+	}
+}
+
+func (s *Server) StopHook() func(context.Context) error {
+	return func(context.Context) error {
+		grpcLogger.Info("gRPC 服务正在停止", "name", s.name)
+		s.srv.GracefulStop()
+		return nil
+	}
+}
+`
+
+const grpcServiceTemplate = `package grpc
+
+import (
+	"context"
+
+	"{{ .ModulePath }}/internal/observability"
+)
+
+var greeterLogger = observability.New("greeter")
+
+type greeterService struct {
+	UnimplementedGreeterServer
+}
+
+func (s *greeterService) SayHello(ctx context.Context, req *HelloRequest) (*HelloReply, error) {
+	greeterLogger.Info("收到 SayHello 请求", "name", req.GetName())
+	return &HelloReply{
+		Message: "Hello, " + req.GetName() + "!",
+	}, nil
+}
+
+func (s *greeterService) HealthCheck(ctx context.Context, req *HealthCheckRequest) (*HealthCheckReply, error) {
+	greeterLogger.Info("收到 HealthCheck 请求")
+	return &HealthCheckReply{
+		Status: "SERVING",
+	}, nil
+}
+`
+
+const kafkaMainTemplate = `package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"{{ .ModulePath }}/internal/app"
+	"{{ .ModulePath }}/internal/config"
+	"{{ .ModulePath }}/internal/kafka"
+	"{{ .ModulePath }}/internal/observability"
+)
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "配置加载失败：%v\n", err)
+		os.Exit(1)
+	}
+
+	observability.SetLevel(cfg.LogLevel)
+	logger := observability.New("kafka")
+
+	brokers := os.Getenv("KAFKA_BROKERS")
+	if brokers == "" {
+		brokers = "localhost:9092"
+	}
+
+	topic := os.Getenv("KAFKA_TOPIC")
+	if topic == "" {
+		topic = "{{ .ProjectName }}-events"
+	}
+
+	consumer := kafka.NewConsumer(brokers, topic)
+	producer := kafka.NewProducer(brokers, topic)
+
+	lifecycle := app.New()
+	lifecycle.OnStart("kafka-consumer", consumer.StartHook())
+	lifecycle.OnStart("kafka-producer", producer.StartHook())
+	lifecycle.OnStop("kafka-producer", producer.StopHook())
+	lifecycle.OnStop("kafka-consumer", consumer.StopHook())
+
+	if err := lifecycle.Start(context.Background()); err != nil {
+		logger.Error("Kafka 组件启动失败", "error", err.Error())
+		os.Exit(1)
+	}
+
+	logger.Info("Kafka 组件已启动", "brokers", brokers, "topic", topic)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+
+	if err := lifecycle.Stop(ctx); err != nil {
+		logger.Error("Kafka 组件停止失败", "error", err.Error())
+		os.Exit(1)
+	}
+
+	logger.Info("Kafka 组件已停止")
+}
+`
+
+const kafkaConsumerTemplate = `package kafka
+
+import (
+	"context"
+	"time"
+
+	"{{ .ModulePath }}/internal/observability"
+)
+
+var consumerLogger = observability.New("kafka-consumer")
+
+type Consumer struct {
+	brokers string
+	topic   string
+	stop    chan struct{}
+}
+
+func NewConsumer(brokers, topic string) *Consumer {
+	return &Consumer{
+		brokers: brokers,
+		topic:   topic,
+		stop:    make(chan struct{}),
+	}
+}
+
+func (c *Consumer) StartHook() func(context.Context) error {
+	return func(context.Context) error {
+		go c.consume()
+		return nil
+	}
+}
+
+func (c *Consumer) StopHook() func(context.Context) error {
+	return func(context.Context) error {
+		close(c.stop)
+		return nil
+	}
+}
+
+func (c *Consumer) consume() {
+	consumerLogger.Info("消费者已启动", "brokers", c.brokers, "topic", c.topic)
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			consumerLogger.Info("消费者轮询消息", "topic", c.topic)
+			// TODO: 在此处实现实际的 Kafka 消费逻辑
+			// 例如：使用 sarama 库连接 Kafka 集群并消费消息
+		case <-c.stop:
+			consumerLogger.Info("消费者已停止", "topic", c.topic)
+			return
+		}
+	}
+}
+`
+
+const kafkaProducerTemplate = `package kafka
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"{{ .ModulePath }}/internal/observability"
+)
+
+var producerLogger = observability.New("kafka-producer")
+
+type Producer struct {
+	brokers string
+	topic   string
+	stop    chan struct{}
+}
+
+func NewProducer(brokers, topic string) *Producer {
+	return &Producer{
+		brokers: brokers,
+		topic:   topic,
+		stop:    make(chan struct{}),
+	}
+}
+
+func (p *Producer) StartHook() func(context.Context) error {
+	return func(context.Context) error {
+		go p.heartbeat()
+		return nil
+	}
+}
+
+func (p *Producer) StopHook() func(context.Context) error {
+	return func(context.Context) error {
+		close(p.stop)
+		return nil
+	}
+}
+
+func (p *Producer) heartbeat() {
+	producerLogger.Info("生产者已启动", "brokers", p.brokers, "topic", p.topic)
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			producerLogger.Info("生产者心跳检测通过", "topic", p.topic)
+		case <-p.stop:
+			producerLogger.Info("生产者已停止", "topic", p.topic)
+			return
+		}
+	}
+}
+
+func (p *Producer) Send(ctx context.Context, key []byte, value []byte) error {
+	producerLogger.Info("生产者发送消息", "topic", p.topic, "key", string(key))
+	// TODO: 在此处实现实际的 Kafka 生产逻辑
+	// 例如：使用 sarama 库连接 Kafka 集群并发送消息
+	return fmt.Errorf("未连线 Kafka，消息未能发送到 %s", p.topic)
+}
+`
+
+const kafkaLifecycleTemplate = `package kafka
+
+// 生命周期钩子定义在 consumer.go 和 producer.go 中。
+// 此文件用于导出函数签名与通用常量。
 `

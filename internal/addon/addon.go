@@ -115,7 +115,7 @@ func render(raw string, data TemplateData) (string, error) {
 }
 
 func availableModules() []string {
-	return []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors"}
+	return []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors"}
 }
 
 func contains(items []string, target string) bool {
@@ -190,6 +190,12 @@ func applyModulePatches(moduleName, targetDir string) error {
 		return addWorkerTarget(targetDir)
 	case "webhook":
 		return addWebhookRoute(targetDir)
+	case "redis":
+		return addRedisSupport(targetDir)
+	case "grpc":
+		return addGRPCSupport(targetDir)
+	case "kafka":
+		return addKafkaSupport(targetDir)
 	default:
 		return nil
 	}
@@ -574,5 +580,99 @@ func appendToFile(path, block, label string) error {
 	}
 
 	_ = label
+	return nil
+}
+
+func addRedisSupport(targetDir string) error {
+	if err := appendEnvValue(targetDir, "REDIS_URL=redis://localhost:6379"); err != nil {
+		return err
+	}
+
+	if err := addRouteLine(targetDir, "mux.HandleFunc(\"/redis/readyz\", redisReadyHandler)", "/redis/readyz"); err != nil {
+		return err
+	}
+
+	return patchRedisLifecycle(targetDir)
+}
+
+func patchRedisLifecycle(targetDir string) error {
+	mainPath := filepath.Join(targetDir, "cmd", "api", "main.go")
+	storeImport := "\t\"" + detectOrFallbackModule(targetDir) + "/internal/store\"\n"
+	if err := ensureImport(mainPath, "\t\"os\"\n", storeImport); err != nil {
+		return err
+	}
+
+	block := "\tredisManager := store.NewRedisManager(os.Getenv(\"REDIS_URL\"))\n\tlifecycle.OnStart(\"redis\", redisManager.Start)\n\tlifecycle.OnStop(\"redis\", redisManager.Stop)\n"
+	return insertAfter(mainPath, "\tlifecycle := app.New()\n", block, "redis 生命周期")
+}
+
+func addGRPCSupport(targetDir string) error {
+	if err := appendEnvValue(targetDir, "GRPC_PORT=50051"); err != nil {
+		return err
+	}
+
+	return addGRPCMakefileTarget(targetDir)
+}
+
+func addGRPCMakefileTarget(targetDir string) error {
+	makefilePath := filepath.Join(targetDir, "Makefile")
+	content, err := os.ReadFile(makefilePath)
+	if err != nil {
+		return fmt.Errorf("读取 Makefile 失败：%w", err)
+	}
+
+	raw := string(content)
+	targetBlock := "run-grpc:\n\tgo run ./cmd/grpc\n"
+	if strings.Contains(raw, targetBlock) {
+		return nil
+	}
+
+	updated := strings.Replace(raw, "# Golider 扩展命令锚点\n", targetBlock+"\n# Golider 扩展命令锚点\n", 1)
+	if updated == raw {
+		updated = raw + "\n" + targetBlock
+	}
+
+	if err := os.WriteFile(makefilePath, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("写入 Makefile 失败：%w", err)
+	}
+
+	return nil
+}
+
+func addKafkaSupport(targetDir string) error {
+	for _, line := range []string{
+		"KAFKA_BROKERS=localhost:9092",
+		"KAFKA_TOPIC=app-events",
+	} {
+		if err := appendEnvValue(targetDir, line); err != nil {
+			return err
+		}
+	}
+
+	return addKafkaMakefileTarget(targetDir)
+}
+
+func addKafkaMakefileTarget(targetDir string) error {
+	makefilePath := filepath.Join(targetDir, "Makefile")
+	content, err := os.ReadFile(makefilePath)
+	if err != nil {
+		return fmt.Errorf("读取 Makefile 失败：%w", err)
+	}
+
+	raw := string(content)
+	targetBlock := "run-kafka:\n\tgo run ./cmd/kafka\n"
+	if strings.Contains(raw, targetBlock) {
+		return nil
+	}
+
+	updated := strings.Replace(raw, "# Golider 扩展命令锚点\n", targetBlock+"\n# Golider 扩展命令锚点\n", 1)
+	if updated == raw {
+		updated = raw + "\n" + targetBlock
+	}
+
+	if err := os.WriteFile(makefilePath, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("写入 Makefile 失败：%w", err)
+	}
+
 	return nil
 }

@@ -247,6 +247,9 @@ curl -X POST http://localhost:8080/messages \
 | `auth` | 鉴权示例：`/auth/login` 路由与 `AUTH_TOKEN` 配置 |
 | `webhook` | Webhook 示例：`/webhooks/example` 接收接口 |
 | `postgres` | 数据库检查命令、`/db/readyz` 路由、生命周期管理器、PostgreSQL 仓储实现、数据库迁移模板 |
+| `redis` | Redis 连接检查、`/redis/readyz` 路由、生命周期管理器 |
+| `grpc` | gRPC 服务入口、proto 模板文件、Greeter 示例服务、反射注册 |
+| `kafka` | Kafka 消费者/生产者模板、生命周期管理 |
 | `worker` | 独立 worker 入口，接入生命周期装配 |
 
 ---

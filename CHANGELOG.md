@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 - 2026-06-15
+
+### 新增
+
+- `golider add redis`：Redis 连接检查、`/redis/readyz` 端点、生命周期管理
+- `golider add grpc`：gRPC 服务入口、proto 模板、Greeter 示例服务、反射注册
+- `golider add kafka`：Kafka 消费者/生产者模板、生命周期管理
+
+### 改进
+
+- `doctor` 新增 Redis、gRPC、Kafka 能力检测
+- `verify-config` 新增 `REDIS_URL`、`GRPC_PORT`、`KAFKA_BROKERS`、`KAFKA_TOPIC` 配置校验
+- README 添加宣传海报图片
+
 ## 0.2.0 - 2026-06-15
 
 ### 新增

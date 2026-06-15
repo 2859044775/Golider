@@ -78,6 +78,7 @@ func Capabilities(projectDir string) []Capability {
 	depsFile := readMaybe(filepath.Join(projectDir, "internal", "app", "dependencies.go"))
 	repositoryFile := readMaybe(filepath.Join(projectDir, "internal", "repository", "message.go"))
 	postgresRepoFile := readMaybe(filepath.Join(projectDir, "internal", "repository", "message_postgres.go"))
+	redisStoreFile := readMaybe(filepath.Join(projectDir, "internal", "store", "redis.go"))
 
 	return []Capability{
 		{
@@ -260,6 +261,24 @@ func Capabilities(projectDir string) []Capability {
 			Detail:  "包含 PostgreSQL 仓储实现和数据库迁移模板",
 			Related: "internal/repository/message_postgres.go",
 		},
+		{
+			Name:    "Redis 支持",
+			Exists:  fileExists(filepath.Join(projectDir, "internal", "store", "redis.go")) && strings.Contains(redisStoreFile, "CheckRedis") && strings.Contains(router, `mux.HandleFunc("/redis/readyz"`) && strings.Contains(envFile, "REDIS_URL="),
+			Detail:  "包含 Redis 连接检查和就绪端点",
+			Related: "internal/store/redis.go",
+		},
+		{
+			Name:    "gRPC 支持",
+			Exists:  fileExists(filepath.Join(projectDir, "cmd", "grpc", "main.go")) && strings.Contains(makefile, "run-grpc:") && strings.Contains(envFile, "GRPC_PORT="),
+			Detail:  "包含 gRPC 服务入口、proto 定义和 Greeter 示例",
+			Related: "cmd/grpc/main.go",
+		},
+		{
+			Name:    "Kafka 支持",
+			Exists:  fileExists(filepath.Join(projectDir, "cmd", "kafka", "main.go")) && strings.Contains(makefile, "run-kafka:") && strings.Contains(envFile, "KAFKA_BROKERS="),
+			Detail:  "包含 Kafka 消费者、生产者和生命周期管理",
+			Related: "cmd/kafka/main.go",
+		},
 	}
 }
 
@@ -304,6 +323,7 @@ func ConfigRequirements(projectDir string) []ConfigRequirement {
 
 	middleware := readMaybe(filepath.Join(projectDir, "internal", "http", "middleware.go"))
 	router := readMaybe(filepath.Join(projectDir, "internal", "http", "router.go"))
+	makefile := readMaybe(filepath.Join(projectDir, "Makefile"))
 
 	if fileExists(filepath.Join(projectDir, "internal", "http", "timeout.go")) || strings.Contains(middleware, "timeoutMiddleware") {
 		items = append(items, buildConfigRequirement(envValues, "REQUEST_TIMEOUT", "请求超时", validateDurationValue))
@@ -321,6 +341,22 @@ func ConfigRequirements(projectDir string) []ConfigRequirement {
 		items = append(items,
 			buildConfigRequirement(envValues, "DATABASE_URL", "数据库地址", validateNonEmptyValue),
 			buildConfigRequirement(envValues, "DATABASE_TIMEOUT", "数据库检查超时", validateDurationValue),
+		)
+	}
+	if fileExists(filepath.Join(projectDir, "internal", "store", "redis.go")) || strings.Contains(router, `mux.HandleFunc("/redis/readyz"`) {
+		items = append(items,
+			buildConfigRequirement(envValues, "REDIS_URL", "Redis 地址", validateNonEmptyValue),
+		)
+	}
+	if fileExists(filepath.Join(projectDir, "cmd", "grpc", "main.go")) || strings.Contains(makefile, "run-grpc:") {
+		items = append(items,
+			buildConfigRequirement(envValues, "GRPC_PORT", "gRPC 服务端口", validatePortValue),
+		)
+	}
+	if fileExists(filepath.Join(projectDir, "cmd", "kafka", "main.go")) || strings.Contains(makefile, "run-kafka:") {
+		items = append(items,
+			buildConfigRequirement(envValues, "KAFKA_BROKERS", "Kafka 集群地址", validateNonEmptyValue),
+			buildConfigRequirement(envValues, "KAFKA_TOPIC", "Kafka 主题名称", validateNonEmptyValue),
 		)
 	}
 
