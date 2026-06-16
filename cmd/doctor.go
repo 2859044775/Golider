@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/golider/golider/internal/addon"
-	"github.com/golider/golider/internal/check"
+	"github.com/2859044775/Golider/internal/addon"
+	"github.com/2859044775/Golider/internal/check"
 )
 
 func runDoctor(args []string) error {

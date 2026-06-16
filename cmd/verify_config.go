@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/golider/golider/internal/check"
+	"github.com/2859044775/Golider/internal/check"
 )
 
 func runVerifyConfig(args []string) error {

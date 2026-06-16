@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/golider/golider/cmd"
+	"github.com/2859044775/Golider/cmd"
 )
 
 func main() {

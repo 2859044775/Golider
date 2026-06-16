@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/golider/golider/internal/scaffold"
+	"github.com/2859044775/Golider/internal/scaffold"
 )
 
 func runNew(args []string) error {

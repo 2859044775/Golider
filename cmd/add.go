@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/golider/golider/internal/addon"
+	"github.com/2859044775/Golider/internal/addon"
 )
 
 func runAdd(args []string) error {

@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/version-0.3.0-blue" alt="version"></a>
-  <a href="https://github.com/golider/golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
-  <a href="https://github.com/golider/golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
+  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.3.0-blue" alt="version"></a>
+  <a href="https://github.com/2859044775/Golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
+  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
 </p>
 
 ---
@@ -47,7 +47,7 @@ Golider 不是另一个只会生成 CRUD 目录的模板。它是一个面向**�
 ## 安装
 
 ```bash
-go install github.com/golider/golider@latest
+go install github.com/2859044775/Golider@latest
 ```
 
 本地开发时也可以直接运行：
