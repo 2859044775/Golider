@@ -114,11 +114,19 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /bin/api ./cmd/api
 
 FROM alpine:3.20
 
+RUN apk add --no-cache ca-certificates tzdata && \
+    adduser -D -u 1001 app
+
 WORKDIR /app
 
 COPY --from=builder /bin/api /app/api
 
+USER app
+
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -qO- http://localhost:8080/healthz || exit 1
 
 CMD ["/app/api"]
 `
@@ -160,9 +168,26 @@ jobs:
 
 const gitignoreTemplate = `.DS_Store
 .env
+.env.*
+*.local
 bin/
 dist/
 coverage.out
+coverage.txt
+coverage.html
+*.test
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+vendor/
+*.log
 `
 
 const workerMainTemplate = `package main

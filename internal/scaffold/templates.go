@@ -6,6 +6,7 @@ func files() map[string]string {
 		".gitignore":                          gitignoreTemplate,
 		".github/workflows/ci.yml":            ciTemplate,
 		"Dockerfile":                          dockerfileTemplate,
+		".dockerignore":                       dockerignoreTemplate,
 		"Makefile":                            makefileTemplate,
 		"README.md":                           projectReadmeTemplate,
 		"go.mod":                              goModTemplate,
@@ -3121,13 +3122,38 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /bin/api ./cmd/api
 
 FROM alpine:3.20
 
+RUN apk add --no-cache ca-certificates tzdata && \
+    adduser -D -u 1001 app
+
 WORKDIR /app
 
 COPY --from=builder /bin/api /app/api
 
+USER app
+
 EXPOSE {{ .DefaultPort }}
 
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -qO- http://localhost:{{ .DefaultPort }}/healthz || exit 1
+
 CMD ["/app/api"]
+`
+
+const dockerignoreTemplate = `.git
+.gitignore
+.github
+.env
+.env.*
+*.md
+WechatIMG*.jpg
+docker-compose*.yml
+Dockerfile
+.dockerignore
+coverage.out
+coverage.txt
+*.test
+*.exe
+*.swp
 `
 
 const ciTemplate = `name: ci
@@ -3167,7 +3193,24 @@ jobs:
 
 const gitignoreTemplate = `.DS_Store
 .env
+.env.*
+*.local
 bin/
 dist/
 coverage.out
+coverage.txt
+coverage.html
+*.test
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+vendor/
+*.log
 `

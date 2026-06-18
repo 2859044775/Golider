@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.3.1-blue" alt="version"></a>
+  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.4.1-blue" alt="version"></a>
   <a href="https://github.com/2859044775/Golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
   <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
 </p>
@@ -22,7 +22,7 @@
 
 ---
 
-Golider 不是另一个只会生成 CRUD 目录的模板。它是一个面向**真实服务骨架**的 Go 工程脚手架——默认具备日志、输入校验、查询解析、分页、排序、过滤、仓储抽象、幂等写入、冲突校验、状态流转、软删除、审计字段、配置校验、生命周期、就绪摘流、超时护栏和基础测试。生成即具备生产讨论的基础。
+Golider 不是另一个只会生成 CRUD 目录的模板。它是一个面向**真实服务骨架**的 Go 工程脚手架——默认具备结构化日志（支持 JSON 格式）、Prometheus 指标、安全响应头、输入校验、查询解析、分页、排序、过滤、仓储抽象、幂等写入、冲突校验、状态流转、软删除、审计字段、配置校验、生命周期、就绪摘流、深度健康检查、超时护栏、TLS 支持和基础测试。生成即具备生产讨论的基础。
 
 ## 目录
 
@@ -122,6 +122,7 @@ demo/
     │   ├── binding.go          # JSON 输入校验
     │   ├── binding_test.go
     │   ├── errors.go           # 统一错误模型
+    │   ├── metrics.go          # Prometheus 指标
     │   ├── middleware.go       # 中间件装配
     │   ├── middleware_test.go
     │   ├── query.go            # 查询参数解析
@@ -320,3 +321,9 @@ golider doctor fix ./demo
 - [x] 打磨发布体验（Homebrew 安装、版本发布）
 - [x] 生成项目运行日志做分彩级别输出
 - [x] `doctor` 做成更强的表格感输出，成功项折叠、突出异常项
+- [x] 结构化 JSON 日志（`LOG_FORMAT=json`）
+- [x] Prometheus 标准指标（延迟直方图、状态码分类）
+- [x] TLS/HTTPS 支持（`TLS_CERT`/`TLS_KEY`）
+- [x] 深度健康检查（`/healthz` 依赖检查）
+- [ ] 分布式追踪（OpenTelemetry）
+- [ ] 熔断器模块（`golider add circuit-breaker`）

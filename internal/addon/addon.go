@@ -44,6 +44,14 @@ func Install(opts Options) error {
 
 	for path, raw := range moduleFiles(moduleName) {
 		fullPath := filepath.Join(targetDir, path)
+
+		// 已内置模块：文件已存在时跳过写入，避免降级
+		if builtinModules[moduleName] {
+			if _, err := os.Stat(fullPath); err == nil {
+				continue
+			}
+		}
+
 		if !opts.Force {
 			if _, err := os.Stat(fullPath); err == nil {
 				if opts.SkipExisting {
@@ -116,6 +124,17 @@ func render(raw string, data TemplateData) (string, error) {
 
 func availableModules() []string {
 	return []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors"}
+}
+
+// builtinModules 是已由 scaffold 默认生成的模块，add 时跳过文件写入避免降级
+var builtinModules = map[string]bool{
+	"docker":      true,
+	"ci":          true,
+	"gitignore":   true,
+	"request-id":  true,
+	"timeout":     true,
+	"metrics":     true,
+	"error-model": true,
 }
 
 func contains(items []string, target string) bool {
@@ -562,7 +581,7 @@ func appendEnvValue(targetDir, line string) error {
 func appendToFile(path, block, label string) error {
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("读取 %s 失败：%w", path, err)
+		return fmt.Errorf("读取 %s（%s）失败：%w", path, label, err)
 	}
 
 	raw := string(content)
@@ -576,10 +595,9 @@ func appendToFile(path, block, label string) error {
 	raw += block
 
 	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
-		return fmt.Errorf("写入 %s 失败：%w", path, err)
+		return fmt.Errorf("写入 %s（%s）失败：%w", path, label, err)
 	}
 
-	_ = label
 	return nil
 }
 
