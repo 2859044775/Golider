@@ -146,7 +146,7 @@ demo/
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/` | 欢迎页面 |
-| `GET` | `/healthz` | 健康检查 |
+| `GET` | `/healthz` | 健康检查（含依赖检查） |
 | `GET` | `/readyz` | 就绪检查 |
 | `GET` | `/messages` | 消息列表（支持分页、搜索、排序、状态过滤、时间范围） |
 | `POST` | `/messages` | 创建消息（支持 `Idempotency-Key` 幂等写入） |
@@ -154,6 +154,7 @@ demo/
 | `PATCH` | `/messages/{id}` | 局部更新消息（支持状态流转校验） |
 | `DELETE` | `/messages/{id}` | 软删除消息 |
 | `POST` | `/echo` | 请求回显（输入校验示例） |
+| `GET` | `/metrics` | Prometheus 标准指标 |
 
 **分页查询示例：**
 
@@ -178,11 +179,12 @@ curl -X POST http://localhost:8080/messages \
 | 能力 | 说明 |
 |------|------|
 | 安全响应头 | 默认添加 `X-Content-Type-Options`、`X-Frame-Options`、`X-XSS-Protection`、`Referrer-Policy` 等安全头 |
-| 统一日志 | 结构化日志，按级别输出 |
+| 统一日志 | 结构化日志，按级别输出，支持 `LOG_FORMAT=json` 切换 JSON 格式 |
 | 请求标识 | 每个请求自动注入 `X-Request-ID` |
 | 请求超时 | 通过 `REQUEST_TIMEOUT` 配置，默认 5 秒 |
 | Panic Recovery | 自动捕获 panic 并返回统一错误 |
 | 统一错误模型 | `{ "code": "...", "message": "...", "request_id": "..." }` |
+| Prometheus 指标 | 默认 `/metrics` 端点，含请求计数、延迟直方图、状态码分类 |
 
 ### 传输层
 | 能力 | 说明 |
@@ -209,6 +211,8 @@ curl -X POST http://localhost:8080/messages \
 | 配置校验 | 端口范围、日志级别、超时合法性、分页默认值合理性、请求体大小与请求头大小限制 |
 | 请求体限制 | 通过 `BODY_LIMIT_BYTES` 配置，默认 1MB |
 | pprof 诊断 | 通过 `ENABLE_PPROF=true` 开启 `/debug/pprof/` 性能分析端点 |
+| TLS/HTTPS | 通过 `TLS_CERT`/`TLS_KEY` 配置 HTTPS，支持 `ListenAndServeTLS` |
+| 深度健康检查 | `/healthz` 支持注册依赖检查函数，检查失败返回 `503` |
 | 生命周期装配 | 启动钩子和停止钩子统一管理 |
 | 就绪摘流 | 停机前先切换到未就绪状态 |
 | HTTP 超时护栏 | `ReadHeaderTimeout`、`ReadTimeout`、`WriteTimeout`、`IdleTimeout` |
@@ -301,7 +305,7 @@ golider doctor fix ./demo
 
 | 项目 | 内容 |
 |------|------|
-| 当前版本 | `0.3.1` |
+| 当前版本 | `0.4.1` |
 | Go 最低版本 | `1.20` |
 | 开源协议 | `MIT` |
 | 代码仓库 | [GitHub](https://github.com/2859044775/Golider) · [Gitee](https://gitee.com/eason4798_admin/Golider) · [GitCode](https://gitcode.com/gcw_a5oyjfMg/Golider) |

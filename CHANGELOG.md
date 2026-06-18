@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.1 - 2026-06-18
+
+### 新增
+
+- 结构化 JSON 日志：通过 `LOG_FORMAT=json` 切换为 JSON 格式输出，便于日志聚合系统解析
+- Prometheus 标准指标：默认 `/metrics` 端点输出 Prometheus text 格式，含请求计数（按 method/status 分类）、延迟直方图、panic 恢复计数
+- TLS/HTTPS 支持：通过 `TLS_CERT`/`TLS_KEY` 配置证书，启用 `ListenAndServeTLS`
+- 深度健康检查：`/healthz` 支持通过 `RegisterHealthCheck()` 注册依赖检查函数，检查失败返回 `503`
+
+### 改进
+
+- `doctor` 新增结构化 JSON 日志、Prometheus 指标、TLS/HTTPS、深度健康检查能力检测
+- `verify-config` 新增 `LOG_FORMAT` 配置校验
+
 ## 0.3.1 - 2026-06-16
 
 ### 新增

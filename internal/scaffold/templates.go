@@ -16,6 +16,7 @@ func files() map[string]string {
 		"internal/http/binding.go":            bindingTemplate,
 		"internal/http/errors.go":             errorModelTemplate,
 		"internal/http/middleware.go":         middlewareTemplate,
+		"internal/http/metrics.go":            metricsTemplate,
 		"internal/http/binding_test.go":       bindingTestTemplate,
 		"internal/http/middleware_test.go":    middlewareTestTemplate,
 		"internal/http/query.go":              queryTemplate,
@@ -41,6 +42,7 @@ go 1.20
 const envExampleTemplate = `PORT={{ .DefaultPort }}
 SHUTDOWN_TIMEOUT=10s
 LOG_LEVEL=info
+LOG_FORMAT=text
 REQUEST_TIMEOUT=5s
 HTTP_READ_HEADER_TIMEOUT=2s
 HTTP_READ_TIMEOUT=10s
@@ -51,6 +53,8 @@ MAX_PAGE_SIZE=100
 MAX_HEADER_BYTES=1048576
 BODY_LIMIT_BYTES=1048576
 ENABLE_PPROF=false
+TLS_CERT=
+TLS_KEY=
 `
 
 const makefileTemplate = `run:
@@ -137,6 +141,7 @@ type Config struct {
 	Port              string
 	ShutdownTimeout   time.Duration
 	LogLevel          string
+	LogFormat         string
 	ReadHeaderTimeout time.Duration
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
@@ -146,12 +151,15 @@ type Config struct {
 	MaxHeaderBytes    int
 	BodyLimitBytes    int64
 	EnablePprof       bool
+	TLSCert           string
+	TLSKey            string
 }
 
 func Load() (Config, error) {
 	port := getenv("PORT", "{{ .DefaultPort }}")
 	timeout := getenv("SHUTDOWN_TIMEOUT", "10s")
 	logLevel := strings.ToLower(getenv("LOG_LEVEL", "info"))
+	logFormat := strings.ToLower(getenv("LOG_FORMAT", "text"))
 	readHeaderTimeout := getenv("HTTP_READ_HEADER_TIMEOUT", "2s")
 	readTimeout := getenv("HTTP_READ_TIMEOUT", "10s")
 	writeTimeout := getenv("HTTP_WRITE_TIMEOUT", "15s")
@@ -161,6 +169,8 @@ func Load() (Config, error) {
 	maxHeaderBytes := getenv("MAX_HEADER_BYTES", "1048576")
 	bodyLimitBytes := getenv("BODY_LIMIT_BYTES", "1048576")
 	enablePprof := strings.ToLower(getenv("ENABLE_PPROF", "false"))
+	tlsCert := getenv("TLS_CERT", "")
+	tlsKey := getenv("TLS_KEY", "")
 
 	d, err := time.ParseDuration(timeout)
 	if err != nil {
@@ -203,6 +213,7 @@ func Load() (Config, error) {
 		Port:              port,
 		ShutdownTimeout:   d,
 		LogLevel:          logLevel,
+		LogFormat:         logFormat,
 		ReadHeaderTimeout: readHeaderDuration,
 		ReadTimeout:       readDuration,
 		WriteTimeout:      writeDuration,
@@ -212,6 +223,8 @@ func Load() (Config, error) {
 		MaxHeaderBytes:    maxHeaderValue,
 		BodyLimitBytes:    bodyLimitValue,
 		EnablePprof:       enablePprof == "true" || enablePprof == "1",
+		TLSCert:           tlsCert,
+		TLSKey:            tlsKey,
 	}
 
 	if err := validate(cfg); err != nil {
@@ -267,6 +280,12 @@ func validate(cfg Config) error {
 
 	if _, ok := allowedLogLevels[cfg.LogLevel]; !ok {
 		return fmt.Errorf("LOG_LEVEL 必须是 debug、info、warn、error 之一")
+	}
+	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {
+		return fmt.Errorf("LOG_FORMAT 必须是 text 或 json")
+	}
+	if (cfg.TLSCert == "") != (cfg.TLSKey == "") {
+		return fmt.Errorf("TLS_CERT 和 TLS_KEY 必须同时设置或同时留空")
 	}
 
 	return nil
@@ -404,6 +423,7 @@ func withMiddlewares(next http.Handler) http.Handler {
 	// Golider 中间件扩展锚点
 	handler = securityHeadersMiddleware(handler)
 	handler = requestIDMiddleware(handler)
+	handler = metricsMiddleware(handler)
 	handler = timeoutMiddleware(handler)
 	handler = requestLogMiddleware(handler)
 	handler = recoverMiddleware(handler)
@@ -441,6 +461,144 @@ func recoverMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+`
+
+const metricsTemplate = `package http
+
+import (
+	"fmt"
+	"net/http"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+var (
+	metricsMu          sync.Mutex
+	requestCounts      = map[string]uint64{}
+	requestDurations   = map[string]time.Duration{}
+	recoveryCount      uint64
+	histogramBuckets   = []time.Duration{5 * time.Millisecond, 10 * time.Millisecond, 25 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond, 250 * time.Millisecond, 500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 5 * time.Second}
+	histogramCounts    = map[string][]uint64{}
+	histogramSum       = map[string]time.Duration{}
+)
+
+func init() {
+	recordRecovery = func() { atomic.AddUint64(&recoveryCount, 1) }
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		duration := time.Since(start)
+
+		label := fmt.Sprintf("%s|%d", r.Method, recorder.status)
+		metricsMu.Lock()
+		requestCounts[label]++
+		requestDurations[r.Method] += duration
+		if _, ok := histogramCounts[label]; !ok {
+			histogramCounts[label] = make([]uint64, len(histogramBuckets))
+		}
+		for i, b := range histogramBuckets {
+			if duration <= b {
+				histogramCounts[label][i]++
+			}
+		}
+		histogramSum[label] += duration
+		metricsMu.Unlock()
+	})
+}
+
+func metricsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+
+	metricsMu.Lock()
+	counts := make(map[string]uint64, len(requestCounts))
+	for k, v := range requestCounts {
+		counts[k] = v
+	}
+	durations := make(map[string]time.Duration, len(requestDurations))
+	for k, v := range requestDurations {
+		durations[k] = v
+	}
+	hCounts := make(map[string][]uint64, len(histogramCounts))
+	for k, v := range histogramCounts {
+		hCounts[k] = append([]uint64(nil), v...)
+	}
+	hSum := make(map[string]time.Duration, len(histogramSum))
+	for k, v := range histogramSum {
+		hSum[k] = v
+	}
+	metricsMu.Unlock()
+
+	recoveries := atomic.LoadUint64(&recoveryCount)
+
+	var sb strings.Builder
+	sb.WriteString("# HELP golider_http_requests_total Total HTTP requests by method and status code\n")
+	sb.WriteString("# TYPE golider_http_requests_total counter\n")
+	labels := make([]string, 0, len(counts))
+	for k := range counts {
+		labels = append(labels, k)
+	}
+	sort.Strings(labels)
+	for _, k := range labels {
+		parts := strings.SplitN(k, "|", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("golider_http_requests_total{method=%q,status=%q} %d\n", parts[0], parts[1], counts[k]))
+	}
+
+	sb.WriteString("# HELP golider_http_request_duration_seconds_total Total request duration by method\n")
+	sb.WriteString("# TYPE golider_http_request_duration_seconds_total counter\n")
+	methodLabels := make([]string, 0, len(durations))
+	for k := range durations {
+		methodLabels = append(methodLabels, k)
+	}
+	sort.Strings(methodLabels)
+	for _, m := range methodLabels {
+		sb.WriteString(fmt.Sprintf("golider_http_request_duration_seconds_total{method=%q} %f\n", m, durations[m].Seconds()))
+	}
+
+	sb.WriteString("# HELP golider_http_request_duration_seconds Request duration histogram\n")
+	sb.WriteString("# TYPE golider_http_request_duration_seconds histogram\n")
+	for _, k := range labels {
+		parts := strings.SplitN(k, "|", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		bc, ok := hCounts[k]
+		if !ok {
+			continue
+		}
+		for i, b := range histogramBuckets {
+			sb.WriteString(fmt.Sprintf("golider_http_request_duration_seconds_bucket{method=%q,status=%q,le=%q} %d\n", parts[0], parts[1], fmt.Sprintf("%.3f", b.Seconds()), bc[i]))
+		}
+		sb.WriteString(fmt.Sprintf("golider_http_request_duration_seconds_bucket{method=%q,status=%q,le=\"+Inf\"} %d\n", parts[0], parts[1], counts[k]))
+		sb.WriteString(fmt.Sprintf("golider_http_request_duration_seconds_sum{method=%q,status=%q} %f\n", parts[0], parts[1], hSum[k].Seconds()))
+		sb.WriteString(fmt.Sprintf("golider_http_request_duration_seconds_count{method=%q,status=%q} %d\n", parts[0], parts[1], counts[k]))
+	}
+
+	sb.WriteString("# HELP golider_http_recoveries_total Total panic recoveries\n")
+	sb.WriteString("# TYPE golider_http_recoveries_total counter\n")
+	sb.WriteString(fmt.Sprintf("golider_http_recoveries_total %d\n", recoveries))
+
+	_, _ = w.Write([]byte(sb.String()))
 }
 `
 
@@ -688,6 +846,7 @@ func NewRouter(deps app.Dependencies) http.Handler {
 		}
 	})
 	mux.HandleFunc("/echo", echoHandler)
+	mux.HandleFunc("/metrics", metricsHandler)
 	if deps.EnablePprof {
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -1571,6 +1730,7 @@ const readinessTemplate = `package http
 import (
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -1579,7 +1739,40 @@ type readinessState struct {
 	reason atomic.Value
 }
 
-var readiness = newReadinessState()
+type healthCheck struct {
+	name string
+	fn   func() error
+}
+
+var (
+	readiness      = newReadinessState()
+	healthChecksMu sync.RWMutex
+	healthChecks   []healthCheck
+)
+
+func RegisterHealthCheck(name string, fn func() error) {
+	healthChecksMu.Lock()
+	defer healthChecksMu.Unlock()
+	healthChecks = append(healthChecks, healthCheck{name: name, fn: fn})
+}
+
+func runHealthChecks() []string {
+	healthChecksMu.RLock()
+	checks := make([]healthCheck, len(healthChecks))
+	copy(checks, healthChecks)
+	healthChecksMu.RUnlock()
+
+	var failures []string
+	for _, c := range checks {
+		if c.fn == nil {
+			continue
+		}
+		if err := c.fn(); err != nil {
+			failures = append(failures, c.name+": "+err.Error())
+		}
+	}
+	return failures
+}
 
 func newReadinessState() *readinessState {
 	state := &readinessState{}
@@ -1604,6 +1797,11 @@ func MarkNotReady(reason string) {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
+	failures := runHealthChecks()
+	if len(failures) > 0 {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "unhealthy", "checks": failures})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -1754,6 +1952,7 @@ func main() {
 	}
 
 	observability.SetLevel(cfg.LogLevel)
+	observability.SetFormat(cfg.LogFormat)
 	logger := observability.New("api")
 	httptransport.MarkReady()
 	httptransport.SetMaxBodyBytes(cfg.BodyLimitBytes)
@@ -1774,10 +1973,16 @@ func main() {
 	errCh := make(chan error, 1)
 	lifecycle.OnStart("http-server", func(context.Context) error {
 		httptransport.MarkReady()
-		logger.Info("服务启动中", "port", cfg.Port, "log_level", cfg.LogLevel, "read_header_timeout", cfg.ReadHeaderTimeout.String(), "read_timeout", cfg.ReadTimeout.String(), "write_timeout", cfg.WriteTimeout.String(), "idle_timeout", cfg.IdleTimeout.String(), "default_page_size", cfg.DefaultPageSize, "max_page_size", cfg.MaxPageSize, "max_header_bytes", cfg.MaxHeaderBytes, "body_limit_bytes", cfg.BodyLimitBytes, "enable_pprof", cfg.EnablePprof)
+		logger.Info("服务启动中", "port", cfg.Port, "log_level", cfg.LogLevel, "log_format", cfg.LogFormat, "read_header_timeout", cfg.ReadHeaderTimeout.String(), "read_timeout", cfg.ReadTimeout.String(), "write_timeout", cfg.WriteTimeout.String(), "idle_timeout", cfg.IdleTimeout.String(), "default_page_size", cfg.DefaultPageSize, "max_page_size", cfg.MaxPageSize, "max_header_bytes", cfg.MaxHeaderBytes, "body_limit_bytes", cfg.BodyLimitBytes, "enable_pprof", cfg.EnablePprof, "tls_enabled", cfg.TLSCert != "")
 		go func() {
-			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				errCh <- err
+			if cfg.TLSCert != "" {
+				if err := server.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey); err != nil && err != http.ErrServerClosed {
+					errCh <- err
+				}
+			} else {
+				if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					errCh <- err
+				}
 			}
 		}()
 		return nil
@@ -2720,6 +2925,7 @@ func TestMessageServiceUpdateWithoutVersion(t *testing.T) {
 const loggerTemplate = `package observability
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -2735,8 +2941,20 @@ var std = log.New(os.Stdout, "", log.LstdFlags|log.Lmicroseconds)
 var (
 	levelMu      sync.RWMutex
 	currentLevel = "info"
+	formatMu     sync.RWMutex
+	currentFormat = "text"
 	isTTY        = isTerminal(os.Stdout)
 )
+
+func SetFormat(format string) {
+	formatMu.Lock()
+	defer formatMu.Unlock()
+	if format == "" {
+		currentFormat = "text"
+		return
+	}
+	currentFormat = strings.ToLower(format)
+}
 
 // levelColor 返回日志级别对应的 ANSI 颜色码。
 func levelColor(level string) string {
@@ -2800,6 +3018,43 @@ func (l *Logger) log(level string, message string, fields ...any) {
 	if !enabled(level) {
 		return
 	}
+	if isJSONFormat() {
+		l.logJSON(level, message, fields...)
+		return
+	}
+	l.logText(level, message, fields...)
+}
+
+func isJSONFormat() bool {
+	formatMu.RLock()
+	defer formatMu.RUnlock()
+	return currentFormat == "json"
+}
+
+func (l *Logger) logJSON(level string, message string, fields ...any) {
+	m := map[string]any{
+		"level":     level,
+		"component": l.component,
+		"message":   message,
+	}
+	for idx := 0; idx < len(fields); idx += 2 {
+		key := fmt.Sprintf("field_%d", idx)
+		if idx < len(fields) {
+			key = fmt.Sprintf("%v", fields[idx])
+		}
+		if idx+1 < len(fields) {
+			m[key] = fields[idx+1]
+		}
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		std.Println("{\"level\":\"error\",\"component\":\"logger\",\"message\":\"json marshal failed\",\"error\":" + fmt.Sprintf("%q", err.Error()) + "}")
+		return
+	}
+	std.Println(string(data))
+}
+
+func (l *Logger) logText(level string, message string, fields ...any) {
 	colorCode := levelColor(level)
 	reset := ""
 	if colorCode != "" {

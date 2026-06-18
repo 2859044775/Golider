@@ -210,8 +210,26 @@ func Capabilities(projectDir string) []Capability {
 		{
 			Name:    "指标采集",
 			Exists:  fileExists(filepath.Join(projectDir, "internal", "http", "metrics.go")) && strings.Contains(router, `mux.HandleFunc("/metrics"`) && strings.Contains(middleware, "metricsMiddleware"),
-			Detail:  "包含 /metrics 与请求计数",
+			Detail:  "Prometheus 标准格式 /metrics 端点，含请求计数与延迟直方图",
 			Related: "internal/http/metrics.go",
+		},
+		{
+			Name:    "结构化 JSON 日志",
+			Exists:  strings.Contains(envFile, "LOG_FORMAT=") && strings.Contains(configFile, "LogFormat"),
+			Detail:  "支持 LOG_FORMAT=json 切换为 JSON 结构化日志",
+			Related: "internal/observability/logger.go",
+		},
+		{
+			Name:    "TLS/HTTPS 支持",
+			Exists:  strings.Contains(envFile, "TLS_CERT=") && strings.Contains(envFile, "TLS_KEY=") && strings.Contains(configFile, "TLSCert") && strings.Contains(apiMain, "ListenAndServeTLS"),
+			Detail:  "支持 TLS_CERT/TLS_KEY 配置 HTTPS",
+			Related: "cmd/api/main.go",
+		},
+		{
+			Name:    "深度健康检查",
+			Exists:  strings.Contains(readinessFile, "RegisterHealthCheck") && strings.Contains(readinessFile, "runHealthChecks"),
+			Detail:  "/healthz 支持注册依赖检查函数",
+			Related: "internal/http/readiness.go",
 		},
 		{
 			Name:    "限流保护",
@@ -319,6 +337,7 @@ func ConfigRequirements(projectDir string) []ConfigRequirement {
 		buildConfigRequirement(envValues, "PORT", "基础服务端口", validatePortValue),
 		buildConfigRequirement(envValues, "SHUTDOWN_TIMEOUT", "优雅停机超时", validateDurationValue),
 		buildConfigRequirement(envValues, "LOG_LEVEL", "日志级别", validateLogLevelValue),
+		buildConfigRequirement(envValues, "LOG_FORMAT", "日志格式", func(v string) bool { return v == "text" || v == "json" }),
 		buildConfigRequirement(envValues, "HTTP_READ_HEADER_TIMEOUT", "请求头读取超时", validateDurationValue),
 		buildConfigRequirement(envValues, "HTTP_READ_TIMEOUT", "请求读取超时", validateDurationValue),
 		buildConfigRequirement(envValues, "HTTP_WRITE_TIMEOUT", "响应写入超时", validateDurationValue),

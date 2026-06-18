@@ -29,13 +29,16 @@ func newDependencies() {
 `)
 	writeFile(t, filepath.Join(projectDir, "internal", "config", "config.go"), `package config
 
-type Config struct{}
+type Config struct {
+	LogFormat string
+	TLSCert   string
+}
 
 func Load() (Config, error) { return Config{}, nil }
 func validate(cfg Config) error { return nil }
 `)
 	writeFile(t, filepath.Join(projectDir, "internal", "observability", "logger.go"), "package observability\n")
-	writeFile(t, filepath.Join(projectDir, "internal", "http", "readiness.go"), "package http\nfunc MarkNotReady(string) {}\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "http", "readiness.go"), "package http\nfunc MarkNotReady(string) {}\nfunc RegisterHealthCheck(name string, fn func() error) {}\nfunc runHealthChecks() []string { return nil }\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "binding.go"), "package http\nfunc decodeJSON(any, any) error { return nil }\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "query.go"), "package http\nfunc parseListQuery(any, int, int) (any, error) { return nil, nil }\n")
 	serviceContent := "package service\n\n" +
@@ -163,12 +166,12 @@ func echoHandler(w http.ResponseWriter, r *http.Request) {
 	writeFile(t, filepath.Join(projectDir, "cmd", "dbcheck", "main.go"), "package main\n")
 	writeFile(t, filepath.Join(projectDir, "cmd", "grpc", "main.go"), "package main\n")
 	writeFile(t, filepath.Join(projectDir, "cmd", "kafka", "main.go"), "package main\n")
-	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=8080\nSHUTDOWN_TIMEOUT=10s\nLOG_LEVEL=info\nREQUEST_TIMEOUT=5s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nMAX_HEADER_BYTES=1048576\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nBODY_LIMIT_BYTES=1048576\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\nREDIS_URL=redis://localhost:6379\nGRPC_PORT=50051\nKAFKA_BROKERS=localhost:9092\nKAFKA_TOPIC=app-events\n")
+	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=8080\nSHUTDOWN_TIMEOUT=10s\nLOG_LEVEL=info\nLOG_FORMAT=text\nREQUEST_TIMEOUT=5s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nMAX_HEADER_BYTES=1048576\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nBODY_LIMIT_BYTES=1048576\nTLS_CERT=\nTLS_KEY=\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\nREDIS_URL=redis://localhost:6379\nGRPC_PORT=50051\nKAFKA_BROKERS=localhost:9092\nKAFKA_TOPIC=app-events\n")
 	writeFile(t, filepath.Join(projectDir, ".gitignore"), "bin/\n")
 	writeFile(t, filepath.Join(projectDir, "Dockerfile"), "FROM golang:1.20\n")
 	writeFile(t, filepath.Join(projectDir, ".github", "workflows", "ci.yml"), "name: ci\n")
 	writeFile(t, filepath.Join(projectDir, "Makefile"), "run-worker:\n\tgo run ./cmd/worker\n\ndb-check:\n\tgo run ./cmd/dbcheck\n\nrun-grpc:\n\tgo run ./cmd/grpc\n\nrun-kafka:\n\tgo run ./cmd/kafka\n")
-	writeFile(t, filepath.Join(projectDir, "cmd", "api", "main.go"), "package main\n\nfunc main() {\n\tlifecycle.OnStop(\"http-server\", nil)\n\tMarkNotReady(\"shutting_down\")\n\t_ = `ReadHeaderTimeout: cfg.ReadHeaderTimeout`\n\t_ = `MaxHeaderBytes:    cfg.MaxHeaderBytes`\n\t_ = `WriteTimeout:      cfg.WriteTimeout`\n\t_ = `deps := app.NewDependencies(cfg)`\n\t_ = `httptransport.NewRouter(deps)`\n}\n")
+	writeFile(t, filepath.Join(projectDir, "cmd", "api", "main.go"), "package main\n\nfunc main() {\n\tlifecycle.OnStop(\"http-server\", nil)\n\tMarkNotReady(\"shutting_down\")\n\t_ = `ReadHeaderTimeout: cfg.ReadHeaderTimeout`\n\t_ = `MaxHeaderBytes:    cfg.MaxHeaderBytes`\n\t_ = `WriteTimeout:      cfg.WriteTimeout`\n\t_ = `deps := app.NewDependencies(cfg)`\n\t_ = `httptransport.NewRouter(deps)`\n\t_ = `ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)`\n}\n")
 
 	capabilities := Capabilities(projectDir)
 	if len(capabilities) == 0 {
@@ -184,7 +187,7 @@ func echoHandler(w http.ResponseWriter, r *http.Request) {
 
 func TestMissingOrInvalidConfig(t *testing.T) {
 	projectDir := t.TempDir()
-	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=70000\nSHUTDOWN_TIMEOUT=0s\nLOG_LEVEL=verbose\nREQUEST_TIMEOUT=1s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nMAX_HEADER_BYTES=1048576\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nBODY_LIMIT_BYTES=1048576\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\nDATABASE_TIMEOUT=3s\n")
+	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=70000\nSHUTDOWN_TIMEOUT=0s\nLOG_LEVEL=verbose\nLOG_FORMAT=xml\nREQUEST_TIMEOUT=1s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nMAX_HEADER_BYTES=1048576\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nBODY_LIMIT_BYTES=1048576\nTLS_CERT=\nTLS_KEY=\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\nDATABASE_TIMEOUT=3s\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "middleware.go"), `package http
 
 import "net/http"
@@ -215,8 +218,8 @@ func NewRouter() http.Handler {
 	writeFile(t, filepath.Join(projectDir, "internal", "store", "postgres.go"), "package store\n")
 
 	items := MissingOrInvalidConfig(projectDir)
-	if len(items) != 3 {
-		t.Fatalf("应识别出 3 项非法配置，实际为 %d", len(items))
+	if len(items) != 4 {
+		t.Fatalf("应识别出 4 项非法配置，实际为 %d", len(items))
 	}
 
 	got := map[string]bool{}
@@ -224,7 +227,7 @@ func NewRouter() http.Handler {
 		got[item.Name] = true
 	}
 
-	for _, name := range []string{"PORT", "SHUTDOWN_TIMEOUT", "LOG_LEVEL"} {
+	for _, name := range []string{"PORT", "SHUTDOWN_TIMEOUT", "LOG_LEVEL", "LOG_FORMAT"} {
 		if !got[name] {
 			t.Fatalf("缺少配置项 %s 的非法识别", name)
 		}
