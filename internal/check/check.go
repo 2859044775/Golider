@@ -100,6 +100,12 @@ func Capabilities(projectDir string) []Capability {
 			Related: "internal/http/middleware.go",
 		},
 		{
+			Name:    "安全响应头",
+			Exists:  strings.Contains(middleware, "securityHeadersMiddleware") && strings.Contains(middleware, "X-Content-Type-Options"),
+			Detail:  "默认添加 nosniff、frame、XSS 等安全响应头",
+			Related: "internal/http/middleware.go",
+		},
+		{
 			Name:    "请求日志",
 			Exists:  strings.Contains(middleware, "requestLogMiddleware") && fileExists(filepath.Join(projectDir, "internal", "observability", "logger.go")),
 			Detail:  "请求完成日志已接入",
@@ -197,8 +203,8 @@ func Capabilities(projectDir string) []Capability {
 		},
 		{
 			Name:    "服务超时护栏",
-			Exists:  strings.Contains(apiMain, "ReadHeaderTimeout: cfg.ReadHeaderTimeout") && strings.Contains(apiMain, "WriteTimeout:      cfg.WriteTimeout") && strings.Contains(envFile, "HTTP_READ_HEADER_TIMEOUT=") && strings.Contains(envFile, "HTTP_READ_TIMEOUT=") && strings.Contains(envFile, "HTTP_WRITE_TIMEOUT=") && strings.Contains(envFile, "HTTP_IDLE_TIMEOUT="),
-			Detail:  "HTTP 服务默认启用读写与空闲超时保护",
+			Exists:  strings.Contains(apiMain, "ReadHeaderTimeout: cfg.ReadHeaderTimeout") && strings.Contains(apiMain, "MaxHeaderBytes:    cfg.MaxHeaderBytes") && strings.Contains(apiMain, "WriteTimeout:      cfg.WriteTimeout") && strings.Contains(envFile, "HTTP_READ_HEADER_TIMEOUT=") && strings.Contains(envFile, "HTTP_READ_TIMEOUT=") && strings.Contains(envFile, "HTTP_WRITE_TIMEOUT=") && strings.Contains(envFile, "HTTP_IDLE_TIMEOUT=") && strings.Contains(envFile, "MAX_HEADER_BYTES="),
+			Detail:  "HTTP 服务默认启用读写超时与请求头大小保护",
 			Related: "cmd/api/main.go",
 		},
 		{
@@ -319,6 +325,8 @@ func ConfigRequirements(projectDir string) []ConfigRequirement {
 		buildConfigRequirement(envValues, "HTTP_IDLE_TIMEOUT", "连接空闲超时", validateDurationValue),
 		buildConfigRequirement(envValues, "DEFAULT_PAGE_SIZE", "默认分页大小", validatePositiveIntValue),
 		buildConfigRequirement(envValues, "MAX_PAGE_SIZE", "最大分页大小", validatePositiveIntValue),
+		buildConfigRequirement(envValues, "MAX_HEADER_BYTES", "最大请求头字节数", validatePositiveIntValue),
+		buildConfigRequirement(envValues, "BODY_LIMIT_BYTES", "请求体大小限制", validatePositiveIntValue),
 	)
 
 	middleware := readMaybe(filepath.Join(projectDir, "internal", "http", "middleware.go"))

@@ -48,6 +48,9 @@ HTTP_WRITE_TIMEOUT=15s
 HTTP_IDLE_TIMEOUT=60s
 DEFAULT_PAGE_SIZE=10
 MAX_PAGE_SIZE=100
+MAX_HEADER_BYTES=1048576
+BODY_LIMIT_BYTES=1048576
+ENABLE_PPROF=false
 `
 
 const makefileTemplate = `run:
@@ -140,6 +143,9 @@ type Config struct {
 	IdleTimeout       time.Duration
 	DefaultPageSize   int
 	MaxPageSize       int
+	MaxHeaderBytes    int
+	BodyLimitBytes    int64
+	EnablePprof       bool
 }
 
 func Load() (Config, error) {
@@ -152,6 +158,9 @@ func Load() (Config, error) {
 	idleTimeout := getenv("HTTP_IDLE_TIMEOUT", "60s")
 	defaultPageSize := getenv("DEFAULT_PAGE_SIZE", "10")
 	maxPageSize := getenv("MAX_PAGE_SIZE", "100")
+	maxHeaderBytes := getenv("MAX_HEADER_BYTES", "1048576")
+	bodyLimitBytes := getenv("BODY_LIMIT_BYTES", "1048576")
+	enablePprof := strings.ToLower(getenv("ENABLE_PPROF", "false"))
 
 	d, err := time.ParseDuration(timeout)
 	if err != nil {
@@ -181,6 +190,14 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("MAX_PAGE_SIZE 解析失败：%w", err)
 	}
+	maxHeaderValue, err := strconv.Atoi(maxHeaderBytes)
+	if err != nil {
+		return Config{}, fmt.Errorf("MAX_HEADER_BYTES 解析失败：%w", err)
+	}
+	bodyLimitValue, err := strconv.ParseInt(bodyLimitBytes, 10, 64)
+	if err != nil {
+		return Config{}, fmt.Errorf("BODY_LIMIT_BYTES 解析失败：%w", err)
+	}
 
 	cfg := Config{
 		Port:              port,
@@ -192,6 +209,9 @@ func Load() (Config, error) {
 		IdleTimeout:       idleDuration,
 		DefaultPageSize:   defaultPageValue,
 		MaxPageSize:       maxPageValue,
+		MaxHeaderBytes:    maxHeaderValue,
+		BodyLimitBytes:    bodyLimitValue,
+		EnablePprof:       enablePprof == "true" || enablePprof == "1",
 	}
 
 	if err := validate(cfg); err != nil {
@@ -237,6 +257,12 @@ func validate(cfg Config) error {
 	}
 	if cfg.MaxPageSize < cfg.DefaultPageSize {
 		return fmt.Errorf("MAX_PAGE_SIZE 不能小于 DEFAULT_PAGE_SIZE")
+	}
+	if cfg.MaxHeaderBytes <= 0 {
+		return fmt.Errorf("MAX_HEADER_BYTES 必须大于 0")
+	}
+	if cfg.BodyLimitBytes <= 0 {
+		return fmt.Errorf("BODY_LIMIT_BYTES 必须大于 0")
 	}
 
 	if _, ok := allowedLogLevels[cfg.LogLevel]; !ok {
@@ -331,6 +357,7 @@ type Dependencies struct {
 	MessageService   *service.MessageService
 	DefaultPageSize int
 	MaxPageSize     int
+	EnablePprof     bool
 }
 
 func NewDependencies(cfg config.Config) Dependencies {
@@ -339,6 +366,7 @@ func NewDependencies(cfg config.Config) Dependencies {
 		MessageService:   service.NewMessageService(repo),
 		DefaultPageSize: cfg.DefaultPageSize,
 		MaxPageSize:     cfg.MaxPageSize,
+		EnablePprof:     cfg.EnablePprof,
 	}
 }
 
@@ -374,11 +402,23 @@ var recordRecovery = func() {}
 func withMiddlewares(next http.Handler) http.Handler {
 	handler := next
 	// Golider 中间件扩展锚点
+	handler = securityHeadersMiddleware(handler)
 	handler = requestIDMiddleware(handler)
 	handler = timeoutMiddleware(handler)
 	handler = requestLogMiddleware(handler)
 	handler = recoverMiddleware(handler)
 	return handler
+}
+
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func requestLogMiddleware(next http.Handler) http.Handler {
@@ -415,6 +455,14 @@ import (
 	"strings"
 )
 
+var maxBodyBytes int64 = 1 << 20
+
+func SetMaxBodyBytes(n int64) {
+	if n > 0 {
+		maxBodyBytes = n
+	}
+}
+
 type requestValidationError struct {
 	Code    string
 	Message string
@@ -438,7 +486,7 @@ func decodeJSON(r *http.Request, dst any) error {
 		return &requestValidationError{Code: "invalid_content_type", Message: "content type must be application/json"}
 	}
 
-	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	decoder := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil {
 		var syntaxError *json.SyntaxError
@@ -597,6 +645,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 
 	"{{ .Module }}/internal/app"
@@ -639,6 +688,13 @@ func NewRouter(deps app.Dependencies) http.Handler {
 		}
 	})
 	mux.HandleFunc("/echo", echoHandler)
+	if deps.EnablePprof {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
 	// Golider 路由扩展锚点
 	return withMiddlewares(mux)
 }
@@ -1432,6 +1488,33 @@ import (
 	"time"
 )
 
+func TestSecurityHeadersMiddleware(t *testing.T) {
+	handler := securityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	tests := []struct {
+		header string
+		want   string
+	}{
+		{"X-Content-Type-Options", "nosniff"},
+		{"X-Frame-Options", "DENY"},
+		{"X-XSS-Protection", "1; mode=block"},
+		{"Referrer-Policy", "strict-origin-when-cross-origin"},
+		{"X-Permitted-Cross-Domain-Policies", "none"},
+	}
+	for _, tt := range tests {
+		got := recorder.Header().Get(tt.header)
+		if got != tt.want {
+			t.Errorf("期望 %s=%q，实际得到 %q", tt.header, tt.want, got)
+		}
+	}
+}
+
 func TestRecoverMiddlewareWritesErrorResponse(t *testing.T) {
 	handler := requestIDMiddleware(recoverMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("boom")
@@ -1673,6 +1756,7 @@ func main() {
 	observability.SetLevel(cfg.LogLevel)
 	logger := observability.New("api")
 	httptransport.MarkReady()
+	httptransport.SetMaxBodyBytes(cfg.BodyLimitBytes)
 	deps := app.NewDependencies(cfg)
 	handler := httptransport.NewRouter(deps)
 
@@ -1683,13 +1767,14 @@ func main() {
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
+		MaxHeaderBytes:    cfg.MaxHeaderBytes,
 	}
 
 	lifecycle := app.New()
 	errCh := make(chan error, 1)
 	lifecycle.OnStart("http-server", func(context.Context) error {
 		httptransport.MarkReady()
-		logger.Info("服务启动中", "port", cfg.Port, "log_level", cfg.LogLevel, "read_header_timeout", cfg.ReadHeaderTimeout.String(), "read_timeout", cfg.ReadTimeout.String(), "write_timeout", cfg.WriteTimeout.String(), "idle_timeout", cfg.IdleTimeout.String(), "default_page_size", cfg.DefaultPageSize, "max_page_size", cfg.MaxPageSize)
+		logger.Info("服务启动中", "port", cfg.Port, "log_level", cfg.LogLevel, "read_header_timeout", cfg.ReadHeaderTimeout.String(), "read_timeout", cfg.ReadTimeout.String(), "write_timeout", cfg.WriteTimeout.String(), "idle_timeout", cfg.IdleTimeout.String(), "default_page_size", cfg.DefaultPageSize, "max_page_size", cfg.MaxPageSize, "max_header_bytes", cfg.MaxHeaderBytes, "body_limit_bytes", cfg.BodyLimitBytes, "enable_pprof", cfg.EnablePprof)
 		go func() {
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				errCh <- err

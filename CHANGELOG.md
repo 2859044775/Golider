@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.1 - 2026-06-16
+
+### 新增
+
+- 安全响应头中间件：默认添加 `X-Content-Type-Options`、`X-Frame-Options`、`X-XSS-Protection`、`Referrer-Policy`、`X-Permitted-Cross-Domain-Policies`
+- HTTP Server 请求头大小限制：通过 `MAX_HEADER_BYTES` 环境变量配置
+- 请求体大小限制可配置化：通过 `BODY_LIMIT_BYTES` 环境变量配置（原硬编码 1MB）
+- pprof 性能诊断端点：通过 `ENABLE_PPROF=true` 开启 `/debug/pprof/`
+- Homebrew 安装支持：`brew install 2859044775/Golider/golider`
+- README 添加 GitCode 仓库地址
+
+### 改进
+
+- `doctor` 新增安全响应头能力检测
+- `verify-config` 新增 `MAX_HEADER_BYTES`、`BODY_LIMIT_BYTES` 配置校验
+
 ## 0.3.0 - 2026-06-15
 
 ### 新增
