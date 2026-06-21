@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 - 2026-06-18
+
+### 新增
+
+- 分布式追踪：默认接入 W3C Trace Context 上下文传播，自动解析/生成 `traceparent` 头，日志关联 `trace_id`，纯标准库实现
+- `golider add circuit-breaker`：熔断器中间件模块，支持关闭/开启/半开三态切换，通过 `CIRCUIT_BREAKER_THRESHOLD`/`CIRCUIT_BREAKER_TIMEOUT`/`CIRCUIT_BREAKER_SUCCESS_THRESHOLD` 配置
+
+### 改进
+
+- `doctor` 新增分布式追踪能力检测
+- `doctor` 新增熔断器保护能力检测
+- `verify-config` 新增熔断器配置校验（`CIRCUIT_BREAKER_THRESHOLD`/`CIRCUIT_BREAKER_TIMEOUT`/`CIRCUIT_BREAKER_SUCCESS_THRESHOLD`）
+- 请求日志和异常恢复日志新增 `trace_id` 字段
+
 ## 0.4.1 - 2026-06-18
 
 ### 新增

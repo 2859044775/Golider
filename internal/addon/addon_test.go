@@ -536,6 +536,56 @@ func recoverMiddleware(next http.Handler) http.Handler { return next }
 	}
 }
 
+func TestInstallCircuitBreakerModule(t *testing.T) {
+	projectDir := t.TempDir()
+	writeFile(t, filepath.Join(projectDir, "go.mod"), "module github.com/acme/demo\n\ngo 1.20\n")
+	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=8080\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "http", "middleware.go"), `package http
+
+import "net/http"
+
+func withMiddlewares(next http.Handler) http.Handler {
+	handler := next
+	// Golider 中间件扩展锚点
+	handler = requestLogMiddleware(handler)
+	handler = recoverMiddleware(handler)
+	return handler
+}
+
+func requestLogMiddleware(next http.Handler) http.Handler { return next }
+func recoverMiddleware(next http.Handler) http.Handler { return next }
+`)
+
+	err := Install(Options{
+		ModuleName: "circuit-breaker",
+		TargetDir:  projectDir,
+	})
+	if err != nil {
+		t.Fatalf("安装 circuit-breaker 模块失败: %v", err)
+	}
+
+	middlewareFile := readFile(t, filepath.Join(projectDir, "internal", "http", "middleware.go"))
+	if !strings.Contains(middlewareFile, "handler = circuitBreakerMiddleware(handler)") {
+		t.Fatalf("middleware.go 未注入 circuit-breaker 中间件: %s", middlewareFile)
+	}
+
+	envFile := readFile(t, filepath.Join(projectDir, ".env.example"))
+	for _, fragment := range []string{
+		"CIRCUIT_BREAKER_THRESHOLD=5",
+		"CIRCUIT_BREAKER_TIMEOUT=30s",
+		"CIRCUIT_BREAKER_SUCCESS_THRESHOLD=2",
+	} {
+		if !strings.Contains(envFile, fragment) {
+			t.Fatalf(".env.example 未追加 %s: %s", fragment, envFile)
+		}
+	}
+
+	cbFile := readFile(t, filepath.Join(projectDir, "internal", "http", "circuitbreaker.go"))
+	if !strings.Contains(cbFile, "func circuitBreakerMiddleware") {
+		t.Fatalf("circuitbreaker.go 未生成: %s", cbFile)
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

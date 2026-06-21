@@ -27,6 +27,7 @@ func files() map[string]string {
 		"internal/http/router_test.go":        routerTestTemplate,
 		"internal/http/requestid.go":          requestIDTemplate,
 		"internal/http/timeout.go":            timeoutTemplate,
+		"internal/http/tracing.go":            tracingTemplate,
 		"internal/observability/logger.go":    loggerTemplate,
 		"internal/repository/message.go":      messageRepositoryTemplate,
 		"internal/repository/message_test.go": messageRepositoryTestTemplate,
@@ -98,6 +99,7 @@ make run
 | ` + "`PATCH`" + ` | ` + "`/messages/{id}`" + ` | 局部更新（状态流转） |
 | ` + "`DELETE`" + ` | ` + "`/messages/{id}`" + ` | 软删除 |
 | ` + "`POST`" + ` | ` + "`/echo`" + ` | 请求回显 |
+| ` + "`GET`" + ` | ` + "`/metrics`" + ` | Prometheus 指标 |
 
 ` + "```bash" + `
 # 创建消息
@@ -111,7 +113,7 @@ curl http://localhost:8080/messages?page=1&page_size=10
 
 ## 工程能力
 
-日志 · 请求标识 · 请求超时 · Panic Recovery · 统一错误模型 · JSON 输入校验 · 查询解析 · 分页 · 幂等写入 · 冲突校验 · 状态流转 · 软删除 · 审计字段 · 仓储抽象 · 配置校验 · 生命周期 · 就绪摘流 · HTTP 超时护栏 · Dockerfile · CI
+日志 · 请求标识 · 请求超时 · Panic Recovery · 统一错误模型 · JSON 输入校验 · 查询解析 · 分页 · 幂等写入 · 冲突校验 · 状态流转 · 软删除 · 审计字段 · 仓储抽象 · 配置校验 · 生命周期 · 就绪摘流 · HTTP 超时护栏 · Prometheus 指标 · 结构化 JSON 日志 · TLS/HTTPS · 深度健康检查 · 分布式追踪 · Dockerfile · CI
 
 ## 验证
 
@@ -427,6 +429,7 @@ func withMiddlewares(next http.Handler) http.Handler {
 	handler = metricsMiddleware(handler)
 	handler = timeoutMiddleware(handler)
 	handler = requestLogMiddleware(handler)
+	handler = tracingMiddleware(handler)
 	handler = recoverMiddleware(handler)
 	return handler
 }
@@ -446,7 +449,7 @@ func requestLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		httpLogger.Info("请求完成", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start).String(), "request_id", requestIDFromRequest(r))
+		httpLogger.Info("请求完成", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start).String(), "request_id", requestIDFromRequest(r), "trace_id", traceIDFromContext(r.Context()))
 	})
 }
 
@@ -455,7 +458,7 @@ func recoverMiddleware(next http.Handler) http.Handler {
 		defer func() {
 			if rec := recover(); rec != nil {
 				recordRecovery()
-				httpLogger.Error("请求异常恢复", "panic", rec, "request_id", requestIDFromRequest(r))
+				httpLogger.Error("请求异常恢复", "panic", rec, "request_id", requestIDFromRequest(r), "trace_id", traceIDFromContext(r.Context()))
 				writeError(w, r, http.StatusInternalServerError, "internal_server_error", "internal server error")
 			}
 		}()
@@ -1900,6 +1903,83 @@ func timeoutMiddleware(next http.Handler) http.Handler {
 
 	timeoutLogger.Info("启用请求超时中间件", "timeout", timeout.String())
 	return http.TimeoutHandler(next, timeout, "{\"error\":\"request timeout\"}\n")
+}
+`
+
+const tracingTemplate = `package http
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"net/http"
+	"strings"
+)
+
+type traceContextKey struct{}
+
+type traceContext struct {
+	traceID string
+	spanID  string
+}
+
+func tracingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tc := parseTraceparent(r.Header.Get("Traceparent"))
+		if tc.traceID == "" {
+			tc = newTraceContext()
+		}
+		w.Header().Set("Traceparent", formatTraceparent(tc))
+		ctx := context.WithValue(r.Context(), traceContextKey{}, tc)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func parseTraceparent(raw string) traceContext {
+	raw = strings.TrimSpace(raw)
+	parts := strings.Split(raw, "-")
+	if len(parts) != 4 || parts[0] != "00" {
+		return traceContext{}
+	}
+	traceID := parts[1]
+	spanID := parts[2]
+	if len(traceID) != 32 || len(spanID) != 16 {
+		return traceContext{}
+	}
+	if _, err := hex.DecodeString(traceID); err != nil {
+		return traceContext{}
+	}
+	if _, err := hex.DecodeString(spanID); err != nil {
+		return traceContext{}
+	}
+	return traceContext{traceID: traceID, spanID: spanID}
+}
+
+func formatTraceparent(tc traceContext) string {
+	return "00-" + tc.traceID + "-" + tc.spanID + "-01"
+}
+
+func newTraceContext() traceContext {
+	return traceContext{
+		traceID: randomHex(16),
+		spanID:  randomHex(8),
+	}
+}
+
+func randomHex(n int) string {
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return strings.Repeat("0", n*2)
+	}
+	return hex.EncodeToString(buf)
+}
+
+func traceIDFromContext(ctx context.Context) string {
+	tc, ok := ctx.Value(traceContextKey{}).(traceContext)
+	if !ok {
+		return ""
+	}
+	return tc.traceID
 }
 `
 

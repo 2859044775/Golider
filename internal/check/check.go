@@ -232,6 +232,12 @@ func Capabilities(projectDir string) []Capability {
 			Related: "internal/http/readiness.go",
 		},
 		{
+			Name:    "分布式追踪",
+			Exists:  fileExists(filepath.Join(projectDir, "internal", "http", "tracing.go")) && strings.Contains(middleware, "tracingMiddleware"),
+			Detail:  "W3C Trace Context 分布式追踪上下文传播",
+			Related: "internal/http/tracing.go",
+		},
+		{
 			Name:    "限流保护",
 			Exists:  fileExists(filepath.Join(projectDir, "internal", "http", "ratelimit.go")) && strings.Contains(envFile, "RATE_LIMIT_PER_SECOND="),
 			Detail:  "支持 RATE_LIMIT_PER_SECOND 配置",
@@ -242,6 +248,12 @@ func Capabilities(projectDir string) []Capability {
 			Exists:  fileExists(filepath.Join(projectDir, "internal", "http", "cors.go")) && strings.Contains(envFile, "CORS_ALLOW_ORIGINS=") && strings.Contains(middleware, "corsMiddleware"),
 			Detail:  "支持 CORS_ALLOW_ORIGINS 配置",
 			Related: "internal/http/cors.go",
+		},
+		{
+			Name:    "熔断器保护",
+			Exists:  fileExists(filepath.Join(projectDir, "internal", "http", "circuitbreaker.go")) && strings.Contains(middleware, "circuitBreakerMiddleware") && strings.Contains(envFile, "CIRCUIT_BREAKER_THRESHOLD="),
+			Detail:  "支持 CIRCUIT_BREAKER_THRESHOLD/TIMEOUT/SUCCESS_THRESHOLD 配置",
+			Related: "internal/http/circuitbreaker.go",
 		},
 		{
 			Name:    "鉴权示例",
@@ -360,6 +372,13 @@ func ConfigRequirements(projectDir string) []ConfigRequirement {
 	}
 	if fileExists(filepath.Join(projectDir, "internal", "http", "cors.go")) || strings.Contains(middleware, "corsMiddleware") {
 		items = append(items, buildConfigRequirement(envValues, "CORS_ALLOW_ORIGINS", "允许跨域来源", validateNonEmptyValue))
+	}
+	if fileExists(filepath.Join(projectDir, "internal", "http", "circuitbreaker.go")) || strings.Contains(middleware, "circuitBreakerMiddleware") {
+		items = append(items,
+			buildConfigRequirement(envValues, "CIRCUIT_BREAKER_THRESHOLD", "熔断器失败阈值", validatePositiveIntValue),
+			buildConfigRequirement(envValues, "CIRCUIT_BREAKER_TIMEOUT", "熔断器开启持续时间", validateDurationValue),
+			buildConfigRequirement(envValues, "CIRCUIT_BREAKER_SUCCESS_THRESHOLD", "半开状态成功阈值", validatePositiveIntValue),
+		)
 	}
 	if fileExists(filepath.Join(projectDir, "internal", "http", "auth.go")) || strings.Contains(router, `mux.HandleFunc("/auth/login"`) {
 		items = append(items, buildConfigRequirement(envValues, "AUTH_TOKEN", "鉴权令牌", validateNonEmptyValue))

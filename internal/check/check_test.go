@@ -76,11 +76,13 @@ func withMiddlewares(next http.Handler) http.Handler {
 	// Golider 中间件扩展锚点
 	handler = securityHeadersMiddleware(handler)
 	handler = corsMiddleware(handler)
+	handler = circuitBreakerMiddleware(handler)
 	handler = requestIDMiddleware(handler)
 	handler = timeoutMiddleware(handler)
 	handler = metricsMiddleware(handler)
 	handler = rateLimitMiddleware(handler)
 	handler = requestLogMiddleware(handler)
+	handler = tracingMiddleware(handler)
 	handler = recoverMiddleware(handler)
 	return handler
 }
@@ -157,6 +159,8 @@ func echoHandler(w http.ResponseWriter, r *http.Request) {
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "metrics.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "ratelimit.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "cors.go"), "package http\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "http", "circuitbreaker.go"), "package http\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "http", "tracing.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "auth.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "webhook.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "store", "postgres.go"), "package store\n")
@@ -166,7 +170,7 @@ func echoHandler(w http.ResponseWriter, r *http.Request) {
 	writeFile(t, filepath.Join(projectDir, "cmd", "dbcheck", "main.go"), "package main\n")
 	writeFile(t, filepath.Join(projectDir, "cmd", "grpc", "main.go"), "package main\n")
 	writeFile(t, filepath.Join(projectDir, "cmd", "kafka", "main.go"), "package main\n")
-	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=8080\nSHUTDOWN_TIMEOUT=10s\nLOG_LEVEL=info\nLOG_FORMAT=text\nREQUEST_TIMEOUT=5s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nMAX_HEADER_BYTES=1048576\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nBODY_LIMIT_BYTES=1048576\nTLS_CERT=\nTLS_KEY=\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\nREDIS_URL=redis://localhost:6379\nGRPC_PORT=50051\nKAFKA_BROKERS=localhost:9092\nKAFKA_TOPIC=app-events\n")
+	writeFile(t, filepath.Join(projectDir, ".env.example"), "PORT=8080\nSHUTDOWN_TIMEOUT=10s\nLOG_LEVEL=info\nLOG_FORMAT=text\nREQUEST_TIMEOUT=5s\nHTTP_READ_HEADER_TIMEOUT=2s\nHTTP_READ_TIMEOUT=10s\nHTTP_WRITE_TIMEOUT=15s\nHTTP_IDLE_TIMEOUT=60s\nMAX_HEADER_BYTES=1048576\nDEFAULT_PAGE_SIZE=10\nMAX_PAGE_SIZE=100\nBODY_LIMIT_BYTES=1048576\nTLS_CERT=\nTLS_KEY=\nRATE_LIMIT_PER_SECOND=20\nCORS_ALLOW_ORIGINS=*\nAUTH_TOKEN=dev-token\nDATABASE_URL=postgres://demo\nREDIS_URL=redis://localhost:6379\nGRPC_PORT=50051\nKAFKA_BROKERS=localhost:9092\nKAFKA_TOPIC=app-events\nCIRCUIT_BREAKER_THRESHOLD=5\nCIRCUIT_BREAKER_TIMEOUT=30s\nCIRCUIT_BREAKER_SUCCESS_THRESHOLD=2\n")
 	writeFile(t, filepath.Join(projectDir, ".gitignore"), "bin/\n")
 	writeFile(t, filepath.Join(projectDir, "Dockerfile"), "FROM golang:1.20\n")
 	writeFile(t, filepath.Join(projectDir, ".github", "workflows", "ci.yml"), "name: ci\n")

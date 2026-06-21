@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.4.1-blue" alt="version"></a>
+  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.5.0-blue" alt="version"></a>
   <a href="https://github.com/2859044775/Golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
   <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
 </p>
@@ -22,7 +22,7 @@
 
 ---
 
-Golider 不是另一个只会生成 CRUD 目录的模板。它是一个面向**真实服务骨架**的 Go 工程脚手架——默认具备结构化日志（支持 JSON 格式）、Prometheus 指标、安全响应头、输入校验、查询解析、分页、排序、过滤、仓储抽象、幂等写入、冲突校验、状态流转、软删除、审计字段、配置校验、生命周期、就绪摘流、深度健康检查、超时护栏、TLS 支持和基础测试。生成即具备生产讨论的基础。
+Golider 不是另一个只会生成 CRUD 目录的模板。它是一个面向**真实服务骨架**的 Go 工程脚手架——默认具备结构化日志（支持 JSON 格式）、Prometheus 指标、安全响应头、输入校验、查询解析、分页、排序、过滤、仓储抽象、幂等写入、冲突校验、状态流转、软删除、审计字段、配置校验、生命周期、就绪摘流、深度健康检查、超时护栏、TLS 支持、分布式追踪和基础测试。生成即具备生产讨论的基础。
 
 ## 目录
 
@@ -131,7 +131,8 @@ demo/
     │   ├── requestid.go        # 请求标识
     │   ├── router.go           # 路由定义
     │   ├── router_test.go
-    │   └── timeout.go          # 请求超时
+    │   ├── timeout.go          # 请求超时
+    │   └── tracing.go          # 分布式追踪（W3C Trace Context）
     ├── observability/
     │   └── logger.go           # 统一日志
     ├── repository/
@@ -186,6 +187,7 @@ curl -X POST http://localhost:8080/messages \
 | Panic Recovery | 自动捕获 panic 并返回统一错误 |
 | 统一错误模型 | `{ "code": "...", "message": "...", "request_id": "..." }` |
 | Prometheus 指标 | 默认 `/metrics` 端点，含请求计数、延迟直方图、状态码分类 |
+| 分布式追踪 | W3C Trace Context 上下文传播，自动解析/生成 `traceparent`，日志关联 `trace_id` |
 
 ### 传输层
 | 能力 | 说明 |
@@ -257,6 +259,7 @@ curl -X POST http://localhost:8080/messages \
 | `rate-limit` | 注入限流中间件 |
 | `cors` | 注入跨域中间件 |
 | `error-model` | 统一错误返回结构，接入 recover |
+| `circuit-breaker` | 注入熔断器中间件，保护下游依赖 |
 
 ### 业务扩展
 
@@ -306,7 +309,7 @@ golider doctor fix ./demo
 
 | 项目 | 内容 |
 |------|------|
-| 当前版本 | `0.4.1` |
+| 当前版本 | `0.5.0` |
 | Go 最低版本 | `1.20` |
 | 开源协议 | `MIT` |
 | 代码仓库 | [GitHub](https://github.com/2859044775/Golider) · [Gitee](https://gitee.com/eason4798_admin/Golider) · [GitCode](https://gitcode.com/gcw_a5oyjfMg/Golider) |
@@ -325,5 +328,9 @@ golider doctor fix ./demo
 - [x] Prometheus 标准指标（延迟直方图、状态码分类）
 - [x] TLS/HTTPS 支持（`TLS_CERT`/`TLS_KEY`）
 - [x] 深度健康检查（`/healthz` 依赖检查）
-- [ ] 分布式追踪（OpenTelemetry）
-- [ ] 熔断器模块（`golider add circuit-breaker`）
+- [x] 分布式追踪（W3C Trace Context 上下文传播）
+- [x] 熔断器模块（`golider add circuit-breaker`）
+- [ ] WebSocket 模块（`golider add websocket`）
+- [ ] 定时任务模块（`golider add scheduler`）
+- [ ] GraphQL 模块（`golider add graphql`）
+- [ ] 多租户支持（`golider add multi-tenant`）

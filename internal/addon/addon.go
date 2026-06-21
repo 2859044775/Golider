@@ -123,7 +123,7 @@ func render(raw string, data TemplateData) (string, error) {
 }
 
 func availableModules() []string {
-	return []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors"}
+	return []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors", "circuit-breaker"}
 }
 
 // builtinModules 是已由 scaffold 默认生成的模块，add 时跳过文件写入避免降级
@@ -205,6 +205,8 @@ func applyModulePatches(moduleName, targetDir string) error {
 		return addErrorModelSupport(targetDir)
 	case "cors":
 		return addCORSSupport(targetDir)
+	case "circuit-breaker":
+		return addCircuitBreakerSupport(targetDir)
 	case "worker":
 		return addWorkerTarget(targetDir)
 	case "webhook":
@@ -225,6 +227,19 @@ func addCORSSupport(targetDir string) error {
 		return err
 	}
 	return addMiddlewareLine(targetDir, "handler = corsMiddleware(handler)")
+}
+
+func addCircuitBreakerSupport(targetDir string) error {
+	for _, line := range []string{
+		"CIRCUIT_BREAKER_THRESHOLD=5",
+		"CIRCUIT_BREAKER_TIMEOUT=30s",
+		"CIRCUIT_BREAKER_SUCCESS_THRESHOLD=2",
+	} {
+		if err := appendEnvValue(targetDir, line); err != nil {
+			return err
+		}
+	}
+	return addMiddlewareLine(targetDir, "handler = circuitBreakerMiddleware(handler)")
 }
 
 func addErrorModelSupport(targetDir string) error {

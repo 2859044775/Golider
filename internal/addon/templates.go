@@ -61,6 +61,10 @@ func moduleFiles(name string) map[string]string {
 		return map[string]string{
 			"internal/http/cors.go": corsTemplate,
 		}
+	case "circuit-breaker":
+		return map[string]string{
+			"internal/http/circuitbreaker.go": circuitBreakerTemplate,
+		}
 	case "redis":
 		return map[string]string{
 			"internal/store/redis.go":  redisStoreTemplate,
@@ -93,7 +97,7 @@ func baseFiles(name string) map[string]string {
 			"internal/config/config.go":        addonConfigTemplate,
 			"internal/app/app.go":              addonAppTemplate,
 		}
-	case "webhook", "auth", "metrics", "rate-limit", "cors", "redis":
+	case "webhook", "auth", "metrics", "rate-limit", "cors", "redis", "circuit-breaker":
 		return map[string]string{
 			"internal/observability/logger.go": addonLoggerTemplate,
 		}
@@ -923,6 +927,144 @@ func allowOrigin(origin string, allowedOrigins string) bool {
 	}
 
 	return false
+}
+`
+
+const circuitBreakerTemplate = `package http
+
+import (
+	"net/http"
+	"os"
+	"strconv"
+	"sync"
+	"time"
+
+	"{{ .ModulePath }}/internal/observability"
+)
+
+var circuitBreakerLogger = observability.New("circuit-breaker")
+
+type circuitState int
+
+const (
+	circuitClosed   circuitState = 0
+	circuitOpen     circuitState = 1
+	circuitHalfOpen circuitState = 2
+)
+
+type circuitBreaker struct {
+	mu               sync.Mutex
+	state            circuitState
+	failureCount     int
+	successCount     int
+	threshold        int
+	timeout          time.Duration
+	successThreshold int
+	openedAt         time.Time
+}
+
+var breaker = &circuitBreaker{
+	threshold:        5,
+	timeout:          30 * time.Second,
+	successThreshold: 2,
+}
+
+func init() {
+	if raw := os.Getenv("CIRCUIT_BREAKER_THRESHOLD"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			breaker.threshold = n
+		}
+	}
+	if raw := os.Getenv("CIRCUIT_BREAKER_TIMEOUT"); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			breaker.timeout = d
+		}
+	}
+	if raw := os.Getenv("CIRCUIT_BREAKER_SUCCESS_THRESHOLD"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			breaker.successThreshold = n
+		}
+	}
+}
+
+type cbResponseRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *cbResponseRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func circuitBreakerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !breaker.allow() {
+			circuitBreakerLogger.Error("熔断器已开启，请求被拒绝", "path", r.URL.Path)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "circuit breaker open"})
+			return
+		}
+
+		recorder := &cbResponseRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		breaker.record(recorder.status)
+	})
+}
+
+func (cb *circuitBreaker) allow() bool {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	switch cb.state {
+	case circuitClosed:
+		return true
+	case circuitOpen:
+		if time.Since(cb.openedAt) >= cb.timeout {
+			cb.state = circuitHalfOpen
+			cb.successCount = 0
+			circuitBreakerLogger.Info("熔断器进入半开状态")
+			return true
+		}
+		return false
+	case circuitHalfOpen:
+		return true
+	}
+	return true
+}
+
+func (cb *circuitBreaker) record(status int) {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	isFailure := status >= 500
+
+	switch cb.state {
+	case circuitClosed:
+		if isFailure {
+			cb.failureCount++
+			if cb.failureCount >= cb.threshold {
+				cb.state = circuitOpen
+				cb.openedAt = time.Now()
+				circuitBreakerLogger.Error("熔断器从关闭切换到开启", "failures", cb.failureCount)
+			}
+		} else {
+			cb.failureCount = 0
+		}
+	case circuitHalfOpen:
+		if isFailure {
+			cb.state = circuitOpen
+			cb.openedAt = time.Now()
+			cb.successCount = 0
+			circuitBreakerLogger.Error("熔断器从半开切换到开启")
+		} else {
+			cb.successCount++
+			if cb.successCount >= cb.successThreshold {
+				cb.state = circuitClosed
+				cb.failureCount = 0
+				circuitBreakerLogger.Info("熔断器从半开恢复到关闭")
+			}
+		}
+	}
 }
 `
 
