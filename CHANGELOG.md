@@ -5,7 +5,7 @@
 ### 新增
 
 - 分布式追踪：默认接入 W3C Trace Context 上下文传播，自动解析/生成 `traceparent` 头，日志关联 `trace_id`，纯标准库实现
-- `golider add circuit-breaker`：熔断器中间件模块，支持关闭/开启/半开三态切换，通过 `CIRCUIT_BREAKER_THRESHOLD`/`CIRCUIT_BREAKER_TIMEOUT`/`CIRCUIT_BREAKER_SUCCESS_THRESHOLD` 配置
+- `Golider add circuit-breaker`：熔断器中间件模块，支持关闭/开启/半开三态切换，通过 `CIRCUIT_BREAKER_THRESHOLD`/`CIRCUIT_BREAKER_TIMEOUT`/`CIRCUIT_BREAKER_SUCCESS_THRESHOLD` 配置
 
 ### 改进
 
@@ -48,9 +48,9 @@
 
 ### 新增
 
-- `golider add redis`：Redis 连接检查、`/redis/readyz` 端点、生命周期管理
-- `golider add grpc`：gRPC 服务入口、proto 模板、Greeter 示例服务、反射注册
-- `golider add kafka`：Kafka 消费者/生产者模板、生命周期管理
+- `Golider add redis`：Redis 连接检查、`/redis/readyz` 端点、生命周期管理
+- `Golider add grpc`：gRPC 服务入口、proto 模板、Greeter 示例服务、反射注册
+- `Golider add kafka`：Kafka 消费者/生产者模板、生命周期管理
 
 ### 改进
 

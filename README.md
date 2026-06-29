@@ -72,7 +72,7 @@ go run . help
 
 ```bash
 # 1. 生成项目
-golider new demo --module github.com/acme/demo
+Golider new demo --module github.com/acme/demo
 
 # 2. 进入目录
 cd demo
@@ -229,13 +229,13 @@ curl -X POST http://localhost:8080/messages \
 
 | 命令 | 功能 |
 |------|------|
-| `golider new` | 生成带生产默认值的 Go API 工程 |
-| `golider add <模块> [目录]` | 为现有工程追加模块能力 |
-| `golider verify [目录]` | 校验目标工程是否具备最小结构 |
-| `golider verify-config [目录]` | 校验 `.env.example` 完整性与值的合法性 |
-| `golider doctor [目录]` | 检查缺少哪些基础文件、能力和配置 |
-| `golider doctor fix [目录]` | 自动补齐常见通用能力 |
-| `golider version` | 输出版本信息 |
+| `Golider new` | 生成带生产默认值的 Go API 工程 |
+| `Golider add <模块> [目录]` | 为现有工程追加模块能力 |
+| `Golider verify [目录]` | 校验目标工程是否具备最小结构 |
+| `Golider verify-config [目录]` | 校验 `.env.example` 完整性与值的合法性 |
+| `Golider doctor [目录]` | 检查缺少哪些基础文件、能力和配置 |
+| `Golider doctor fix [目录]` | 自动补齐常见通用能力 |
+| `Golider version` | 输出版本信息 |
 
 ---
 
@@ -279,28 +279,28 @@ curl -X POST http://localhost:8080/messages \
 
 ```bash
 # 查看版本
-golider version
+Golider version
 
 # 生成新项目
-golider new demo --module github.com/acme/demo
+Golider new demo --module github.com/acme/demo
 
 # 追加数据库能力
-golider add postgres ./demo
+Golider add postgres ./demo
 
 # 追加 worker 能力
-golider add worker ./demo
+Golider add worker ./demo
 
 # 工程结构校验
-golider verify ./demo
+Golider verify ./demo
 
 # 配置校验
-golider verify-config ./demo
+Golider verify-config ./demo
 
 # 诊断缺失能力
-golider doctor ./demo
+Golider doctor ./demo
 
 # 自动修复
-golider doctor fix ./demo
+Golider doctor fix ./demo
 ```
 
 ---
@@ -329,8 +329,8 @@ golider doctor fix ./demo
 - [x] TLS/HTTPS 支持（`TLS_CERT`/`TLS_KEY`）
 - [x] 深度健康检查（`/healthz` 依赖检查）
 - [x] 分布式追踪（W3C Trace Context 上下文传播）
-- [x] 熔断器模块（`golider add circuit-breaker`）
-- [ ] WebSocket 模块（`golider add websocket`）
-- [ ] 定时任务模块（`golider add scheduler`）
-- [ ] GraphQL 模块（`golider add graphql`）
-- [ ] 多租户支持（`golider add multi-tenant`）
+- [x] 熔断器模块（`Golider add circuit-breaker`）
+- [ ] WebSocket 模块（`Golider add websocket`）
+- [ ] 定时任务模块（`Golider add scheduler`）
+- [ ] GraphQL 模块（`Golider add graphql`）
+- [ ] 多租户支持（`Golider add multi-tenant`）

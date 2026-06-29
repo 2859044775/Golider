@@ -11,10 +11,10 @@ class Golider < Formula
   def install
     system "go", "build", "-ldflags",
            "-X github.com/2859044775/Golider/cmd.version=#{version}",
-           "-o", bin/"golider", "."
+           "-o", bin/"Golider", "."
   end
 
   test do
-    system bin/"golider", "version"
+    system bin/"Golider", "version"
   end
 end

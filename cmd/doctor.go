@@ -105,7 +105,7 @@ func runDoctor(args []string) error {
 	ui.ConclusionSummary(totalNormal, totalItems, abnormalFiles, abnormalCaps, abnormalCfg)
 
 	if abnormalFiles > 0 || abnormalCaps > 0 || abnormalCfg > 0 {
-		return fmt.Errorf("目标工程存在异常项，请检查或执行 `golider doctor fix`")
+		return fmt.Errorf("目标工程存在异常项，请检查或执行 `Golider doctor fix`")
 	}
 	return nil
 }

@@ -16,7 +16,7 @@ func runNew(args []string) error {
 	}
 
 	if strings.TrimSpace(opts.AppName) == "" {
-		return fmt.Errorf("请提供项目名，例如 `golider new demo --module github.com/acme/demo`")
+		return fmt.Errorf("请提供项目名，例如 `Golider new demo --module github.com/acme/demo`")
 	}
 
 	targetDir := opts.TargetDir

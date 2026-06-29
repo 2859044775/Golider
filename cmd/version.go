@@ -14,7 +14,7 @@ var (
 func runVersion(_ []string) error {
 	ui := newTerminalUI(os.Stdout)
 	ui.Header("Golider 版本信息")
-	fmt.Printf("golider %s\n", Version)
+	fmt.Printf("Golider %s\n", Version)
 	fmt.Printf("commit: %s\n", Commit)
 	fmt.Printf("build_date: %s\n", BuildDate)
 	return nil
