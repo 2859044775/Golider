@@ -67,24 +67,30 @@ func moduleFiles(name string) map[string]string {
 		}
 	case "redis":
 		return map[string]string{
-			"internal/store/redis.go":  redisStoreTemplate,
-			"internal/http/redis.go":   redisHTTPTemplate,
+			"internal/store/redis.go": redisStoreTemplate,
+			"internal/http/redis.go":  redisHTTPTemplate,
 		}
 	case "grpc":
 		return map[string]string{
-			"proto/service.proto":        grpcProtoTemplate,
-			"cmd/grpc/main.go":           grpcMainTemplate,
-			"internal/grpc/server.go":    grpcServerTemplate,
-			"internal/grpc/service.go":   grpcServiceTemplate,
+			"proto/service.proto":      grpcProtoTemplate,
+			"cmd/grpc/main.go":         grpcMainTemplate,
+			"internal/grpc/server.go":  grpcServerTemplate,
+			"internal/grpc/service.go": grpcServiceTemplate,
 		}
 	case "kafka":
 		return map[string]string{
-			"cmd/kafka/main.go":            kafkaMainTemplate,
-			"internal/kafka/consumer.go":   kafkaConsumerTemplate,
-			"internal/kafka/producer.go":   kafkaProducerTemplate,
-			"internal/kafka/lifecycle.go":  kafkaLifecycleTemplate,
+			"cmd/kafka/main.go":           kafkaMainTemplate,
+			"internal/kafka/consumer.go":  kafkaConsumerTemplate,
+			"internal/kafka/producer.go":  kafkaProducerTemplate,
+			"internal/kafka/lifecycle.go": kafkaLifecycleTemplate,
 		}
 	default:
+		// 内置模块未命中，检查自定义注册模块
+		for _, m := range registeredModules {
+			if m.Name == name {
+				return m.Files
+			}
+		}
 		return map[string]string{}
 	}
 }
@@ -102,7 +108,20 @@ func baseFiles(name string) map[string]string {
 			"internal/observability/logger.go": addonLoggerTemplate,
 		}
 	default:
+		// 内置模块未命中，检查自定义注册模块
+		for _, m := range registeredModules {
+			if m.Name == name {
+				return m.BaseFiles
+			}
+		}
 		return map[string]string{}
+	}
+}
+
+// CommonBaseFiles 返回自定义模块常用的基础文件（日志模块），供 generated module 使用
+func CommonBaseFiles() map[string]string {
+	return map[string]string{
+		"internal/observability/logger.go": addonLoggerTemplate,
 	}
 }
 

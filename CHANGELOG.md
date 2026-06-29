@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1 - 2026-06-29
+
+### 新增
+
+- `Golider create-module <名称>` 命令：生成自定义 addon 模块骨架到 `internal/addon/modules/`，开发者填写模板代码和 patch 逻辑后重新编译即可使用
+- addon 模块注册系统：`addon.RegisterModule()` / `addon.ModuleDefinition`，支持通过 `init()` 自注册模块
+- 导出 addon 辅助函数供自定义模块使用：`addon.AddMiddlewareLine()`、`addon.AddRouteLine()`、`addon.AppendEnvValue()`、`addon.EnsureImport()`、`addon.InsertAfter()`、`addon.DetectModulePath()`、`addon.CommonBaseFiles()`
+- 内置模块优先级保证：自定义模块不会覆盖同名内置模块
+
 ## 0.5.0 - 2026-06-18
 
 ### 新增
@@ -81,3 +90,4 @@
 - `doctor` 现在会同时检查基础文件、工程能力和配置模板状态
 - `doctor fix` 可自动补齐常见通用工程能力
 - `verify-config` 可独立校验 `.env.example` 的完整性和有效性
+

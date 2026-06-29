@@ -22,6 +22,21 @@ type TemplateData struct {
 	ProjectName string
 }
 
+// ModuleDefinition 自定义模块定义，通过 init() 注册到全局注册表
+type ModuleDefinition struct {
+	Name      string
+	Files     map[string]string
+	BaseFiles map[string]string
+	PatchFunc func(targetDir string) error
+}
+
+var registeredModules []ModuleDefinition
+
+// RegisterModule 注册自定义模块，供 internal/addon/modules/ 下的 init() 调用
+func RegisterModule(def ModuleDefinition) {
+	registeredModules = append(registeredModules, def)
+}
+
 func Install(opts Options) error {
 	moduleName := strings.TrimSpace(opts.ModuleName)
 	if !contains(availableModules(), moduleName) {
@@ -123,7 +138,13 @@ func render(raw string, data TemplateData) (string, error) {
 }
 
 func availableModules() []string {
-	return []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors", "circuit-breaker"}
+	builtin := []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors", "circuit-breaker"}
+	for _, m := range registeredModules {
+		if !contains(builtin, m.Name) {
+			builtin = append(builtin, m.Name)
+		}
+	}
+	return builtin
 }
 
 // builtinModules 是已由 scaffold 默认生成的模块，add 时跳过文件写入避免降级
@@ -164,6 +185,11 @@ func loadTemplateData(targetDir string) (TemplateData, error) {
 }
 
 func detectModulePath(targetDir string) (string, error) {
+	return DetectModulePath(targetDir)
+}
+
+// DetectModulePath 从 go.mod 中检测模块路径，供自定义模块使用
+func DetectModulePath(targetDir string) (string, error) {
 	goModPath := filepath.Join(targetDir, "go.mod")
 	content, err := os.ReadFile(goModPath)
 	if err != nil {
@@ -218,6 +244,12 @@ func applyModulePatches(moduleName, targetDir string) error {
 	case "kafka":
 		return addKafkaSupport(targetDir)
 	default:
+		// 内置模块未命中，检查自定义注册模块
+		for _, m := range registeredModules {
+			if m.Name == moduleName && m.PatchFunc != nil {
+				return m.PatchFunc(targetDir)
+			}
+		}
 		return nil
 	}
 }
@@ -310,6 +342,11 @@ func patchPostgresDependencies(targetDir string) error {
 }
 
 func addMiddlewareLine(targetDir, line string) error {
+	return AddMiddlewareLine(targetDir, line)
+}
+
+// AddMiddlewareLine 向中间件链注入一行，供自定义模块使用
+func AddMiddlewareLine(targetDir, line string) error {
 	middlewarePath := filepath.Join(targetDir, "internal", "http", "middleware.go")
 	content, err := os.ReadFile(middlewarePath)
 	if err != nil {
@@ -359,6 +396,11 @@ func addPostgresMakefileTarget(targetDir string) error {
 }
 
 func addRouteLine(targetDir, routeLine, routeLabel string) error {
+	return AddRouteLine(targetDir, routeLine, routeLabel)
+}
+
+// AddRouteLine 向路由注册注入一行，供自定义模块使用
+func AddRouteLine(targetDir, routeLine, routeLabel string) error {
 	routerPath := filepath.Join(targetDir, "internal", "http", "router.go")
 	content, err := os.ReadFile(routerPath)
 	if err != nil {
@@ -428,6 +470,11 @@ func detectOrFallbackModule(targetDir string) string {
 }
 
 func ensureImport(path, anchor, importLine string) error {
+	return EnsureImport(path, anchor, importLine)
+}
+
+// EnsureImport 确保导入语句存在，供自定义模块使用
+func EnsureImport(path, anchor, importLine string) error {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("读取导入文件失败：%w", err)
@@ -451,6 +498,11 @@ func ensureImport(path, anchor, importLine string) error {
 }
 
 func insertAfter(path, anchor, block, label string) error {
+	return InsertAfter(path, anchor, block, label)
+}
+
+// InsertAfter 在锚点行之后插入代码块，供自定义模块使用
+func InsertAfter(path, anchor, block, label string) error {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("读取%s失败：%w", label, err)
@@ -569,6 +621,11 @@ func addWebhookRoute(targetDir string) error {
 }
 
 func appendEnvValue(targetDir, line string) error {
+	return AppendEnvValue(targetDir, line)
+}
+
+// AppendEnvValue 向 .env.example 追加一行配置，供自定义模块使用
+func AppendEnvValue(targetDir, line string) error {
 	envPath := filepath.Join(targetDir, ".env.example")
 	content, err := os.ReadFile(envPath)
 	if err != nil {

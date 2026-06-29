@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.5.0-blue" alt="version"></a>
+  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.5.1-blue" alt="version"></a>
   <a href="https://github.com/2859044775/Golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
   <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
 </p>
@@ -231,6 +231,7 @@ curl -X POST http://localhost:8080/messages \
 |------|------|
 | `Golider new` | 生成带生产默认值的 Go API 工程 |
 | `Golider add <模块> [目录]` | 为现有工程追加模块能力 |
+| `Golider create-module <名称> [目录]` | 生成自定义模块骨架，用于开发自己的 addon 模块 |
 | `Golider verify [目录]` | 校验目标工程是否具备最小结构 |
 | `Golider verify-config [目录]` | 校验 `.env.example` 完整性与值的合法性 |
 | `Golider doctor [目录]` | 检查缺少哪些基础文件、能力和配置 |
@@ -301,6 +302,12 @@ Golider doctor ./demo
 
 # 自动修复
 Golider doctor fix ./demo
+
+# 生成自定义模块骨架
+Golider create-module my-module
+# → 生成 internal/addon/modules/my_module.go
+# 编辑模板和 patch 逻辑后 go build . 重新编译
+# 然后即可使用 Golider add my-module ./demo
 ```
 
 ---
@@ -330,6 +337,7 @@ Golider doctor fix ./demo
 - [x] 深度健康检查（`/healthz` 依赖检查）
 - [x] 分布式追踪（W3C Trace Context 上下文传播）
 - [x] 熔断器模块（`Golider add circuit-breaker`）
+- [x] 自定义模块开发（`Golider create-module`）
 - [ ] WebSocket 模块（`Golider add websocket`）
 - [ ] 定时任务模块（`Golider add scheduler`）
 - [ ] GraphQL 模块（`Golider add graphql`）

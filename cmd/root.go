@@ -16,6 +16,8 @@ func Execute(args []string) error {
 		return runNew(args[1:])
 	case "add":
 		return runAdd(args[1:])
+	case "create-module":
+		return runCreateModule(args[1:])
 	case "verify":
 		return runVerify(args[1:])
 	case "verify-config":
@@ -43,6 +45,7 @@ func printRootUsage() {
 	ui.Section("可用命令")
 	ui.KeyValue("new", "生成一个最小可运行的 Go API 工程")
 	ui.KeyValue("add", "为现有工程补充基础模块")
+	ui.KeyValue("create-module", "生成自定义模块骨架，用于开发自己的 addon 模块")
 	ui.KeyValue("verify", "校验目标工程是否具备 Golider 最小结构")
 	ui.KeyValue("verify-config", "校验目标工程的配置模板是否完整且有效")
 	ui.KeyValue("doctor", "检查目标工程缺少哪些基础能力")
@@ -63,6 +66,8 @@ func printRootUsage() {
 	ui.KeyValue("示例", "Golider add rate-limit ./demo")
 	ui.KeyValue("示例", "Golider add error-model ./demo")
 	ui.KeyValue("示例", "Golider add cors ./demo")
+	ui.KeyValue("示例", "Golider add circuit-breaker ./demo")
+	ui.KeyValue("示例", "Golider create-module my-module")
 	ui.KeyValue("示例", "Golider verify ./demo")
 	ui.KeyValue("示例", "Golider verify-config ./demo")
 	ui.KeyValue("示例", "Golider doctor ./demo")

@@ -16,7 +16,7 @@ func TestRunVersion(t *testing.T) {
 	})
 
 	for _, fragment := range []string{
-		"Golider 0.5.0",
+		"Golider 0.5.1",
 		"commit: dev",
 		"build_date: unknown",
 	} {
