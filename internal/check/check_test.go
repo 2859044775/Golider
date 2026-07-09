@@ -118,6 +118,7 @@ func NewRouter(deps app.Dependencies) http.Handler {
 	mux.HandleFunc("/webhooks/example", exampleWebhookHandler)
 	mux.HandleFunc("/db/readyz", postgresReadyHandler)
 	mux.HandleFunc("/redis/readyz", redisReadyHandler)
+	mux.HandleFunc("/ws", websocketHandler)
 	// Golider 路由扩展锚点
 	return withMiddlewares(mux)
 }
@@ -160,6 +161,7 @@ func echoHandler(w http.ResponseWriter, r *http.Request) {
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "ratelimit.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "cors.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "circuitbreaker.go"), "package http\n")
+	writeFile(t, filepath.Join(projectDir, "internal", "http", "websocket.go"), "package http\nfunc websocketHandler() {}")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "tracing.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "auth.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "webhook.go"), "package http\n")

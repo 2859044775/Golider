@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.5.1-blue" alt="version"></a>
+  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.6.0-blue" alt="version"></a>
   <a href="https://github.com/2859044775/Golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
   <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
 </p>
@@ -316,7 +316,7 @@ Golider create-module my-module
 
 | 项目 | 内容 |
 |------|------|
-| 当前版本 | `0.5.0` |
+| 当前版本 | `0.6.0` |
 | Go 最低版本 | `1.20` |
 | 开源协议 | `MIT` |
 | 代码仓库 | [GitHub](https://github.com/2859044775/Golider) · [Gitee](https://gitee.com/eason4798_admin/Golider) · [GitCode](https://gitcode.com/gcw_a5oyjfMg/Golider) |

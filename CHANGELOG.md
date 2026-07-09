@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0 - 2026-06-29
+
+### 新增
+
+- `Golider add websocket` 模块：纯标准库实现的 WebSocket 实时推送
+  - `/ws` 端点，支持房间订阅（`?room=xxx` 查询参数）
+  - Hub-Client 架构，支持多房间管理和消息广播
+  - 心跳保活（30秒 ping/pong）
+  - 运行时房间切换（通过发送 JSON 消息）
+  - 导出 `BroadcastToRoom(room, event, payload)` 函数供业务调用
+
+### 改进
+
+- `doctor` 新增 WebSocket 实时推送能力检测
+
 ## 0.5.1 - 2026-06-29
 
 ### 新增

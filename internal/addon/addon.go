@@ -138,7 +138,7 @@ func render(raw string, data TemplateData) (string, error) {
 }
 
 func availableModules() []string {
-	builtin := []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors", "circuit-breaker"}
+	builtin := []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors", "circuit-breaker", "websocket"}
 	for _, m := range registeredModules {
 		if !contains(builtin, m.Name) {
 			builtin = append(builtin, m.Name)
@@ -233,6 +233,8 @@ func applyModulePatches(moduleName, targetDir string) error {
 		return addCORSSupport(targetDir)
 	case "circuit-breaker":
 		return addCircuitBreakerSupport(targetDir)
+	case "websocket":
+		return addWebsocketSupport(targetDir)
 	case "worker":
 		return addWorkerTarget(targetDir)
 	case "webhook":
@@ -272,6 +274,13 @@ func addCircuitBreakerSupport(targetDir string) error {
 		}
 	}
 	return addMiddlewareLine(targetDir, "handler = circuitBreakerMiddleware(handler)")
+}
+
+func addWebsocketSupport(targetDir string) error {
+	if err := addRouteLine(targetDir, `mux.HandleFunc("/ws", websocketHandler)`, "/ws"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func addErrorModelSupport(targetDir string) error {

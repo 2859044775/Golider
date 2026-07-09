@@ -65,6 +65,10 @@ func moduleFiles(name string) map[string]string {
 		return map[string]string{
 			"internal/http/circuitbreaker.go": circuitBreakerTemplate,
 		}
+	case "websocket":
+		return map[string]string{
+			"internal/http/websocket.go": websocketTemplate,
+		}
 	case "redis":
 		return map[string]string{
 			"internal/store/redis.go": redisStoreTemplate,
@@ -946,6 +950,321 @@ func allowOrigin(origin string, allowedOrigins string) bool {
 	}
 
 	return false
+}
+`
+
+const websocketTemplate = `package http
+
+import (
+	"crypto/sha1"
+	"encoding/base64"
+	"encoding/json"
+	"net"
+	"net/http"
+	"sync"
+	"time"
+
+	"{{ .ModulePath }}/internal/observability"
+)
+
+var websocketLogger = observability.New("websocket")
+
+const (
+	websocketGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+	pingInterval  = 30 * time.Second
+	writeTimeout  = 10 * time.Second
+)
+
+type Message struct {
+	Room    string ` + "`json:\"room\"`" + `
+	Event   string ` + "`json:\"event\"`" + `
+	Payload any    ` + "`json:\"payload\"`" + `
+}
+
+type Hub struct {
+	mu       sync.RWMutex
+	rooms    map[string]map[*Client]bool
+	register chan *Client
+	unregister chan *Client
+	broadcast  chan Message
+}
+
+func NewHub() *Hub {
+	return &Hub{
+		rooms:      make(map[string]map[*Client]bool),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+		broadcast:  make(chan Message, 256),
+	}
+}
+
+func (h *Hub) Run() {
+	for {
+		select {
+		case client := <-h.register:
+			h.mu.Lock()
+			if h.rooms[client.room] == nil {
+				h.rooms[client.room] = make(map[*Client]bool)
+			}
+			h.rooms[client.room][client] = true
+			h.mu.Unlock()
+			websocketLogger.Info("客户端加入房间", "room", client.room, "remote", client.conn.RemoteAddr())
+
+		case client := <-h.unregister:
+			h.mu.Lock()
+			if clients, ok := h.rooms[client.room]; ok {
+				delete(clients, client)
+				if len(clients) == 0 {
+					delete(h.rooms, client.room)
+				}
+			}
+			h.mu.Unlock()
+			client.conn.Close()
+			websocketLogger.Info("客户端离开房间", "room", client.room)
+
+		case msg := <-h.broadcast:
+			h.mu.RLock()
+			clients := h.rooms[msg.Room]
+			h.mu.RUnlock()
+
+			data, err := json.Marshal(msg)
+			if err != nil {
+				websocketLogger.Error("消息序列化失败", "error", err)
+				continue
+			}
+
+			for client := range clients {
+				select {
+				case client.send <- data:
+				default:
+					close(client.send)
+					delete(clients, client)
+				}
+			}
+		}
+	}
+}
+
+func (h *Hub) Broadcast(room, event string, payload any) {
+	h.broadcast <- Message{Room: room, Event: event, Payload: payload}
+}
+
+type Client struct {
+	hub  *Hub
+	conn net.Conn
+	send chan []byte
+	room string
+}
+
+func (c *Client) readPump() {
+	defer func() {
+		c.hub.unregister <- c
+	}()
+
+	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+
+	for {
+		frame, err := c.readFrame()
+		if err != nil {
+			websocketLogger.Error("读取帧失败", "error", err)
+			return
+		}
+
+		if frame.opcode == 0x8 {
+			return
+		}
+
+		if frame.opcode == 0x9 {
+			c.writePong(frame.payload)
+			continue
+		}
+
+		if frame.opcode == 0x1 {
+			var msg Message
+			if err := json.Unmarshal(frame.payload, &msg); err == nil {
+				if msg.Room != "" && msg.Room != c.room {
+					c.hub.unregister <- c
+					c.room = msg.Room
+					c.hub.register <- c
+				}
+			}
+		}
+
+		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	}
+}
+
+func (c *Client) writePump() {
+	ticker := time.NewTicker(pingInterval)
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
+	}()
+
+	for {
+		select {
+		case message, ok := <-c.send:
+			if !ok {
+				c.writeClose()
+				return
+			}
+			c.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+			if err := c.writeFrame(0x1, message); err != nil {
+				return
+			}
+
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+			if err := c.writeFrame(0x9, nil); err != nil {
+				return
+			}
+		}
+	}
+}
+
+type wsFrame struct {
+	opcode  byte
+	payload []byte
+}
+
+func (c *Client) readFrame() (*wsFrame, error) {
+	buf := make([]byte, 2)
+	if _, err := c.conn.Read(buf); err != nil {
+		return nil, err
+	}
+
+	opcode := buf[0] & 0x0F
+	masked := buf[1]&0x80 != 0
+	length := int(buf[1] & 0x7F)
+
+	if length == 126 {
+		ext := make([]byte, 2)
+		c.conn.Read(ext)
+		length = int(ext[0])<<8 | int(ext[1])
+	} else if length == 127 {
+		ext := make([]byte, 8)
+		c.conn.Read(ext)
+		length = 0
+		for i := 0; i < 8; i++ {
+			length = length<<8 | int(ext[i])
+		}
+	}
+
+	var maskKey []byte
+	if masked {
+		maskKey = make([]byte, 4)
+		c.conn.Read(maskKey)
+	}
+
+	payload := make([]byte, length)
+	if _, err := c.conn.Read(payload); err != nil {
+		return nil, err
+	}
+
+	if masked {
+		for i := range payload {
+			payload[i] ^= maskKey[i%4]
+		}
+	}
+
+	return &wsFrame{opcode: opcode, payload: payload}, nil
+}
+
+func (c *Client) writeFrame(opcode byte, payload []byte) error {
+	buf := []byte{0x80 | opcode}
+
+	length := len(payload)
+	if length < 126 {
+		buf = append(buf, byte(length))
+	} else if length < 65536 {
+		buf = append(buf, 126, byte(length>>8), byte(length))
+	} else {
+		buf = append(buf, 127)
+		for i := 7; i >= 0; i-- {
+			buf = append(buf, byte(length>>(i*8)))
+		}
+	}
+
+	buf = append(buf, payload...)
+	_, err := c.conn.Write(buf)
+	return err
+}
+
+func (c *Client) writePong(payload []byte) error {
+	return c.writeFrame(0xA, payload)
+}
+
+func (c *Client) writeClose() error {
+	return c.writeFrame(0x8, nil)
+}
+
+var hub = NewHub()
+
+func init() {
+	go hub.Run()
+}
+
+func websocketHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Upgrade") != "websocket" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expected websocket upgrade"})
+		return
+	}
+
+	key := r.Header.Get("Sec-WebSocket-Key")
+	if key == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing Sec-WebSocket-Key"})
+		return
+	}
+
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "websocket not supported"})
+		return
+	}
+
+	conn, _, err := hijacker.Hijack()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to hijack connection"})
+		return
+	}
+
+	acceptKey := computeAcceptKey(key)
+	response := "HTTP/1.1 101 Switching Protocols\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n"
+
+	if _, err := conn.Write([]byte(response)); err != nil {
+		conn.Close()
+		return
+	}
+
+	room := r.URL.Query().Get("room")
+	if room == "" {
+		room = "default"
+	}
+
+	client := &Client{
+		hub:  hub,
+		conn: conn,
+		send: make(chan []byte, 256),
+		room: room,
+	}
+
+	client.hub.register <- client
+
+	go client.writePump()
+	go client.readPump()
+}
+
+func computeAcceptKey(key string) string {
+	h := sha1.New()
+	h.Write([]byte(key + websocketGUID))
+	return base64.StdEncoding.EncodeToString(h.Sum(nil))
+}
+
+func BroadcastToRoom(room, event string, payload any) {
+	hub.Broadcast(room, event, payload)
 }
 `
 

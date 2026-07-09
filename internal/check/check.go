@@ -256,6 +256,12 @@ func Capabilities(projectDir string) []Capability {
 			Related: "internal/http/circuitbreaker.go",
 		},
 		{
+			Name:    "WebSocket 实时推送",
+			Exists:  fileExists(filepath.Join(projectDir, "internal", "http", "websocket.go")) && strings.Contains(router, `mux.HandleFunc("/ws"`) && strings.Contains(router, "websocketHandler"),
+			Detail:  "支持 /ws 端点，纯标准库实现，房间订阅，心跳保活",
+			Related: "internal/http/websocket.go",
+		},
+		{
 			Name:    "鉴权示例",
 			Exists:  fileExists(filepath.Join(projectDir, "internal", "http", "auth.go")) && strings.Contains(router, `mux.HandleFunc("/auth/login"`) && strings.Contains(envFile, "AUTH_TOKEN="),
 			Detail:  "包含鉴权示例路由与令牌配置",
