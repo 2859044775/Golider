@@ -119,6 +119,8 @@ func NewRouter(deps app.Dependencies) http.Handler {
 	mux.HandleFunc("/db/readyz", postgresReadyHandler)
 	mux.HandleFunc("/redis/readyz", redisReadyHandler)
 	mux.HandleFunc("/ws", websocketHandler)
+	mux.HandleFunc("/scheduler/tasks", schedulerListHandler)
+	mux.HandleFunc("/scheduler/trigger/", schedulerTriggerHandler)
 	// Golider 路由扩展锚点
 	return withMiddlewares(mux)
 }
@@ -162,6 +164,7 @@ func echoHandler(w http.ResponseWriter, r *http.Request) {
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "cors.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "circuitbreaker.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "websocket.go"), "package http\nfunc websocketHandler() {}")
+	writeFile(t, filepath.Join(projectDir, "internal", "scheduler", "scheduler.go"), "package scheduler\nfunc New() *Scheduler { return &Scheduler{} }\ntype Scheduler struct{}\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "tracing.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "auth.go"), "package http\n")
 	writeFile(t, filepath.Join(projectDir, "internal", "http", "webhook.go"), "package http\n")
@@ -177,7 +180,7 @@ func echoHandler(w http.ResponseWriter, r *http.Request) {
 	writeFile(t, filepath.Join(projectDir, "Dockerfile"), "FROM golang:1.20\n")
 	writeFile(t, filepath.Join(projectDir, ".github", "workflows", "ci.yml"), "name: ci\n")
 	writeFile(t, filepath.Join(projectDir, "Makefile"), "run-worker:\n\tgo run ./cmd/worker\n\ndb-check:\n\tgo run ./cmd/dbcheck\n\nrun-grpc:\n\tgo run ./cmd/grpc\n\nrun-kafka:\n\tgo run ./cmd/kafka\n")
-	writeFile(t, filepath.Join(projectDir, "cmd", "api", "main.go"), "package main\n\nfunc main() {\n\tlifecycle.OnStop(\"http-server\", nil)\n\tMarkNotReady(\"shutting_down\")\n\t_ = `ReadHeaderTimeout: cfg.ReadHeaderTimeout`\n\t_ = `MaxHeaderBytes:    cfg.MaxHeaderBytes`\n\t_ = `WriteTimeout:      cfg.WriteTimeout`\n\t_ = `deps := app.NewDependencies(cfg)`\n\t_ = `httptransport.NewRouter(deps)`\n\t_ = `ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)`\n}\n")
+	writeFile(t, filepath.Join(projectDir, "cmd", "api", "main.go"), "package main\n\nfunc main() {\n\tlifecycle.OnStop(\"http-server\", nil)\n\tMarkNotReady(\"shutting_down\")\n\t_ = `ReadHeaderTimeout: cfg.ReadHeaderTimeout`\n\t_ = `MaxHeaderBytes:    cfg.MaxHeaderBytes`\n\t_ = `WriteTimeout:      cfg.WriteTimeout`\n\t_ = `deps := app.NewDependencies(cfg)`\n\t_ = `httptransport.NewRouter(deps)`\n\t_ = `ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)`\n\t_ = `scheduler.New()`\n\t_ = `sched.StartHook()`\n}\n")
 
 	capabilities := Capabilities(projectDir)
 	if len(capabilities) == 0 {

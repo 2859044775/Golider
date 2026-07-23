@@ -69,6 +69,12 @@ func moduleFiles(name string) map[string]string {
 		return map[string]string{
 			"internal/http/websocket.go": websocketTemplate,
 		}
+	case "scheduler":
+		return map[string]string{
+			"internal/scheduler/scheduler.go":  schedulerTemplate,
+			"internal/scheduler/lifecycle.go": schedulerLifecycleTemplate,
+			"internal/http/scheduler.go":       schedulerHTTPTemplate,
+		}
 	case "redis":
 		return map[string]string{
 			"internal/store/redis.go": redisStoreTemplate,
@@ -107,7 +113,7 @@ func baseFiles(name string) map[string]string {
 			"internal/config/config.go":        addonConfigTemplate,
 			"internal/app/app.go":              addonAppTemplate,
 		}
-	case "webhook", "auth", "metrics", "rate-limit", "cors", "redis", "circuit-breaker":
+	case "webhook", "auth", "metrics", "rate-limit", "cors", "redis", "circuit-breaker", "websocket", "scheduler":
 		return map[string]string{
 			"internal/observability/logger.go": addonLoggerTemplate,
 		}
@@ -1983,4 +1989,267 @@ const kafkaLifecycleTemplate = `package kafka
 
 // 生命周期钩子定义在 consumer.go 和 producer.go 中。
 // 此文件用于导出函数签名与通用常量。
+`
+
+const schedulerTemplate = `package scheduler
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"{{ .ModulePath }}/internal/observability"
+)
+
+var slog = observability.New("scheduler")
+
+// Job 表示一个已注册的定时任务
+type Job struct {
+	Name     string
+	Schedule string
+	Handler  func(ctx context.Context) error
+
+	interval time.Duration
+	stop     chan struct{}
+	done     chan struct{}
+}
+
+// Scheduler 定时任务调度器，纯标准库实现
+type Scheduler struct {
+	mu   sync.RWMutex
+	jobs map[string]*Job
+}
+
+// New 创建调度器实例
+func New() *Scheduler {
+	return &Scheduler{
+		jobs: make(map[string]*Job),
+	}
+}
+
+// Register 注册一个定时任务。schedule 支持 @every 格式，例如 @every 5s、@every 1m、@every 2h。
+func (s *Scheduler) Register(name, schedule string, handler func(ctx context.Context) error) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("任务名称不能为空")
+	}
+	if handler == nil {
+		return fmt.Errorf("任务 %q 的处理函数不能为空", name)
+	}
+
+	interval, err := parseSchedule(schedule)
+	if err != nil {
+		return fmt.Errorf("解析调度表达式失败：%w", err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.jobs[name]; exists {
+		return fmt.Errorf("定时任务 %q 已存在", name)
+	}
+
+	s.jobs[name] = &Job{
+		Name:     name,
+		Schedule: schedule,
+		Handler:  handler,
+		interval: interval,
+		stop:     make(chan struct{}),
+		done:     make(chan struct{}),
+	}
+
+	slog.Info("注册定时任务", "name", name, "schedule", schedule, "interval", interval.String())
+	return nil
+}
+
+// List 返回所有已注册任务的信息（不含处理函数）
+func (s *Scheduler) List() []JobInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	infos := make([]JobInfo, 0, len(s.jobs))
+	for _, j := range s.jobs {
+		infos = append(infos, JobInfo{
+			Name:     j.Name,
+			Schedule: j.Schedule,
+			Interval: j.interval.String(),
+		})
+	}
+	return infos
+}
+
+// JobInfo 任务信息（对外暴露的只读视图）
+type JobInfo struct {
+	Name     string ` + "`" + `json:"name"` + "`" + `
+	Schedule string ` + "`" + `json:"schedule"` + "`" + `
+	Interval string ` + "`" + `json:"interval"` + "`" + `
+}
+
+// Start 启动所有已注册的定时任务
+func (s *Scheduler) Start() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, job := range s.jobs {
+		go s.runJob(job)
+	}
+	slog.Info("调度器已启动", "job_count", len(s.jobs))
+}
+
+// Stop 停止所有定时任务并等待执行中的任务完成
+func (s *Scheduler) Stop() {
+	s.mu.RLock()
+	for _, job := range s.jobs {
+		close(job.stop)
+	}
+	s.mu.RUnlock()
+
+	// 等待所有 job goroutine 退出
+	s.mu.RLock()
+	for _, job := range s.jobs {
+		<-job.done
+	}
+	s.mu.RUnlock()
+
+	slog.Info("调度器已停止")
+}
+
+// Trigger 手动触发指定任务一次（同步执行，不阻塞定时调度）
+func (s *Scheduler) Trigger(ctx context.Context, name string) error {
+	s.mu.RLock()
+	job, exists := s.jobs[name]
+	s.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("定时任务 %q 不存在", name)
+	}
+
+	slog.Info("手动触发定时任务", "name", name)
+	return job.Handler(ctx)
+}
+
+func (s *Scheduler) runJob(job *Job) {
+	defer close(job.done)
+
+	ticker := time.NewTicker(job.interval)
+	defer ticker.Stop()
+
+	slog.Info("定时任务开始运行", "name", job.Name)
+
+	for {
+		select {
+		case <-ticker.C:
+			slog.Info("执行定时任务", "name", job.Name)
+			ctx, cancel := context.WithTimeout(context.Background(), job.interval)
+			if err := job.Handler(ctx); err != nil {
+				slog.Error("定时任务执行失败", "name", job.Name, "error", err.Error())
+			}
+			cancel()
+		case <-job.stop:
+			slog.Info("定时任务已停止", "name", job.Name)
+			return
+		}
+	}
+}
+
+// parseSchedule 解析调度表达式，支持 @every <duration> 格式
+func parseSchedule(schedule string) (time.Duration, error) {
+	schedule = strings.TrimSpace(schedule)
+
+	if strings.HasPrefix(schedule, "@every ") {
+		d, err := time.ParseDuration(strings.TrimPrefix(schedule, "@every "))
+		if err != nil {
+			return 0, fmt.Errorf("无效的 @every 时长 %q：%w", schedule, err)
+		}
+		if d <= 0 {
+			return 0, fmt.Errorf("@every 时长必须大于 0")
+		}
+		return d, nil
+	}
+
+	return 0, fmt.Errorf("不支持的调度表达式 %q，请使用 @every <duration> 格式，例如 @every 5s、@every 1m、@every 2h", schedule)
+}
+`
+
+const schedulerLifecycleTemplate = `package scheduler
+
+import "context"
+
+// StartHook 返回调度器的启动钩子
+func (s *Scheduler) StartHook() func(context.Context) error {
+	return func(context.Context) error {
+		s.Start()
+		return nil
+	}
+}
+
+// StopHook 返回调度器的停止钩子
+func (s *Scheduler) StopHook() func(context.Context) error {
+	return func(context.Context) error {
+		s.Stop()
+		return nil
+	}
+}
+`
+
+const schedulerHTTPTemplate = `package http
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+
+	"{{ .ModulePath }}/internal/observability"
+	"{{ .ModulePath }}/internal/scheduler"
+)
+
+var schedulerHTTPLogger = observability.New("scheduler-http")
+
+// SchedulerInstance 由 main.go 注入的调度器实例
+var SchedulerInstance *scheduler.Scheduler
+
+func schedulerListHandler(w http.ResponseWriter, r *http.Request) {
+	if SchedulerInstance == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "调度器未初始化"})
+		return
+	}
+
+	tasks := SchedulerInstance.List()
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": tasks})
+}
+
+func schedulerTriggerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	if SchedulerInstance == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "调度器未初始化"})
+		return
+	}
+
+	// 从路径中提取任务名称：/scheduler/trigger/<name>
+	name := strings.TrimPrefix(r.URL.Path, "/scheduler/trigger/")
+	if name == "" {
+		var body struct {
+			Name string ` + "`" + `json:"name"` + "`" + `
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请提供任务名称（路径参数或 JSON body.name）"})
+			return
+		}
+		name = body.Name
+	}
+
+	if err := SchedulerInstance.Trigger(r.Context(), name); err != nil {
+		schedulerHTTPLogger.Error("手动触发任务失败", "name", name, "error", err.Error())
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+
+	schedulerHTTPLogger.Info("手动触发任务成功", "name", name)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "triggered", "name": name})
+}
 `

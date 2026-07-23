@@ -138,7 +138,7 @@ func render(raw string, data TemplateData) (string, error) {
 }
 
 func availableModules() []string {
-	builtin := []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors", "circuit-breaker", "websocket"}
+	builtin := []string{"docker", "ci", "gitignore", "worker", "webhook", "auth", "postgres", "redis", "grpc", "kafka", "request-id", "timeout", "metrics", "rate-limit", "error-model", "cors", "circuit-breaker", "websocket", "scheduler"}
 	for _, m := range registeredModules {
 		if !contains(builtin, m.Name) {
 			builtin = append(builtin, m.Name)
@@ -235,6 +235,8 @@ func applyModulePatches(moduleName, targetDir string) error {
 		return addCircuitBreakerSupport(targetDir)
 	case "websocket":
 		return addWebsocketSupport(targetDir)
+	case "scheduler":
+		return addSchedulerSupport(targetDir)
 	case "worker":
 		return addWorkerTarget(targetDir)
 	case "webhook":
@@ -280,6 +282,42 @@ func addWebsocketSupport(targetDir string) error {
 	if err := addRouteLine(targetDir, `mux.HandleFunc("/ws", websocketHandler)`, "/ws"); err != nil {
 		return err
 	}
+	return nil
+}
+
+func addSchedulerSupport(targetDir string) error {
+	mainPath := filepath.Join(targetDir, "cmd", "api", "main.go")
+	mod := detectOrFallbackModule(targetDir)
+
+	// 1. 注入 scheduler 包导入
+	schedulerImport := "\t\"" + mod + "/internal/scheduler\"\n"
+	if err := ensureImport(mainPath, "\t\"os\"\n", schedulerImport); err != nil {
+		return err
+	}
+
+	// 2. 注入 http 包的 scheduler 导入（用于 SchedulerInstance 赋值）
+	httpImport := "\t\"" + mod + "/internal/http\"\n"
+	_ = ensureImport(mainPath, "\t\"os\"\n", httpImport)
+
+	// 3. 注入调度器生命周期 + 示例任务注册
+	block := "\tsched := scheduler.New()\n" +
+		"\t// 在此处注册定时任务，例如：\n" +
+		"\t// sched.Register(\"cleanup\", \"@every 1h\", func(ctx context.Context) error { return nil })\n" +
+		"\thttp.SchedulerInstance = sched\n" +
+		"\tlifecycle.OnStart(\"scheduler\", sched.StartHook())\n" +
+		"\tlifecycle.OnStop(\"scheduler\", sched.StopHook())\n"
+	if err := insertAfter(mainPath, "\tlifecycle := app.New()\n", block, "scheduler 生命周期"); err != nil {
+		return err
+	}
+
+	// 4. 注册管理端点路由
+	if err := addRouteLine(targetDir, "mux.HandleFunc(\"/scheduler/tasks\", schedulerListHandler)", "/scheduler/tasks"); err != nil {
+		return err
+	}
+	if err := addRouteLine(targetDir, "mux.HandleFunc(\"/scheduler/trigger/\", schedulerTriggerHandler)", "/scheduler/trigger/"); err != nil {
+		return err
+	}
+
 	return nil
 }
 

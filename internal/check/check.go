@@ -262,6 +262,12 @@ func Capabilities(projectDir string) []Capability {
 			Related: "internal/http/websocket.go",
 		},
 		{
+			Name:    "定时任务调度",
+			Exists:  fileExists(filepath.Join(projectDir, "internal", "scheduler", "scheduler.go")) && strings.Contains(router, `mux.HandleFunc("/scheduler/tasks"`) && strings.Contains(router, `mux.HandleFunc("/scheduler/trigger/"`) && strings.Contains(apiMain, "scheduler.New()") && strings.Contains(apiMain, "sched.StartHook()"),
+			Detail:  "支持 @every 格式定时任务注册，HTTP 端点管理/触发任务",
+			Related: "internal/scheduler/scheduler.go",
+		},
+		{
 			Name:    "鉴权示例",
 			Exists:  fileExists(filepath.Join(projectDir, "internal", "http", "auth.go")) && strings.Contains(router, `mux.HandleFunc("/auth/login"`) && strings.Contains(envFile, "AUTH_TOKEN="),
 			Detail:  "包含鉴权示例路由与令牌配置",
