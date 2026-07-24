@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.6.0-blue" alt="version"></a>
+  <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/version-0.7.0-blue" alt="version"></a>
   <a href="https://github.com/2859044775/Golider/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license"></a>
   <a href="https://github.com/2859044775/Golider"><img src="https://img.shields.io/badge/go-%3E%3D1.20-00ADD8?logo=go" alt="go version"></a>
 </p>
@@ -261,6 +261,8 @@ curl -X POST http://localhost:8080/messages \
 | `cors` | 注入跨域中间件 |
 | `error-model` | 统一错误返回结构，接入 recover |
 | `circuit-breaker` | 注入熔断器中间件，保护下游依赖 |
+| `websocket` | WebSocket 实时推送服务，Hub/Client 架构，房间订阅，心跳保活 |
+| `scheduler` | 定时任务调度器，@every 表达式，HTTP 管理端点 |
 
 ### 业务扩展
 
@@ -311,12 +313,18 @@ Golider create-module my-module
 ```
 
 ---
+## Stargazers over time
 
+<p align="center">
+  <img src="https://gitcode.com/AiKuai/Golider/starcharts.svg?variant=adaptive" alt="Stargazers over time">
+</p>
+
+---
 ## 发布信息
 
 | 项目 | 内容 |
 |------|------|
-| 当前版本 | `0.6.0` |
+| 当前版本 | `0.7.0` |
 | Go 最低版本 | `1.20` |
 | 开源协议 | `MIT` |
 | 代码仓库 | [GitHub](https://github.com/2859044775/Golider) · [Gitee](https://gitee.com/eason4798_admin/Golider) · [GitCode](https://gitcode.com/gcw_a5oyjfMg/Golider) |
@@ -338,7 +346,7 @@ Golider create-module my-module
 - [x] 分布式追踪（W3C Trace Context 上下文传播）
 - [x] 熔断器模块（`Golider add circuit-breaker`）
 - [x] 自定义模块开发（`Golider create-module`）
-- [ ] WebSocket 模块（`Golider add websocket`）
-- [ ] 定时任务模块（`Golider add scheduler`）
+- [x] WebSocket 模块（`Golider add websocket`）
+- [x] 定时任务模块（`Golider add scheduler`）
 - [ ] GraphQL 模块（`Golider add graphql`）
 - [ ] 多租户支持（`Golider add multi-tenant`）
